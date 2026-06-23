@@ -86,8 +86,8 @@ jobs:
 
       - name: Zip Backup Folder
         run: |
-          zip -r olspanel_backup.zip ${{ env.FOLDER }}/
-          echo "✓ Archive created: olspanel_backup.zip"
+          zip -r ${{ env.FOLDER }}.zip ${{ env.FOLDER }}/
+          echo "✓ Archive created: ${{ env.FOLDER }}.zip"
 
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
@@ -102,14 +102,14 @@ jobs:
             ### Installation Instructions:
             1. Download this release zip on your target server:
                ```bash
-               wget https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/olspanel_backup.zip
+               wget https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/${{ env.FOLDER }}.zip
                ```
             2. Extract and run the automated installer:
                ```bash
-               unzip olspanel_backup.zip
+               unzip ${{ env.FOLDER }}.zip
                cd ${{ env.FOLDER }}/
                ./offline_install.sh
                ```
-          files: olspanel_backup.zip
+          files: ${{ env.FOLDER }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
