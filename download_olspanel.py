@@ -126,7 +126,9 @@ def request_json(url, headers=None, retries=3):
 def download_file(url, dest_path, retries=4, timeout=45):
     """Downloads a file to a destination path, displaying a formatted progress bar."""
     url = url.replace(" ", "%20")
-    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    dir_name = os.path.dirname(dest_path)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)
     temp_dest = dest_path + ".tmp"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     
@@ -274,21 +276,21 @@ def patch_file(filepath, local_url):
         
         # 1. Replace raw github owpanel URLs: https://raw.githubusercontent.com/osmanfc/owpanel/main/
         content = re.sub(
-            r'https://raw\.githubusercontent\.com/osmanfc/owpanel/main/([^?\s"\']*)(\?[^\s"\']*)?',
+            r'https://raw\.githubusercontent\.com/osmanfc/owpanel/main/([^?\s"\']*)(\?([^\s"\'\(\)]+|\([^)]*\))*)?',
             rf'{local_url}/repo_owpanel/\1',
             content
         )
         
         # 2. Replace raw github olspanel URLs: https://raw.githubusercontent.com/osmanfc/olspanel/main/
         content = re.sub(
-            r'https://raw\.githubusercontent\.com/osmanfc/olspanel/main/([^?\s"\']*)(\?[^\s"\']*)?',
+            r'https://raw\.githubusercontent\.com/osmanfc/olspanel/main/([^?\s"\']*)(\?([^\s"\'\(\)]+|\([^)]*\))*)?',
             rf'{local_url}/repo_olspanel/\1',
             content
         )
         
         # 3. Replace olspanel.com domain links
         content = re.sub(
-            r'https://olspanel\.com/([^?\s"\']*)(\?[^\s"\']*)?',
+            r'https://olspanel\.com/([^?\s"\']*)(\?([^\s"\'\(\)]+|\([^)]*\))*)?',
             rf'{local_url}/\1',
             content
         )
