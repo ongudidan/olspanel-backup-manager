@@ -1,4 +1,4 @@
-# 🚀 OLSPanel Offline Downloader & Backup Manager
+# 🚀 olspanel-backup-manager
 
 This repository contains tools to completely download, backup, and patch the OLSPanel hosting control panel for standalone, local, or offline installation. By mirroring all repositories, zips, precompiled binaries, and package indexes locally, you can deploy and maintain your own panel independently of the developer's remote servers.
 
@@ -40,25 +40,48 @@ python3 download_olspanel.py --dry-run
 
 To install the panel on a fresh target server using your local backup without contacting the developer's domains:
 
-### Step 1: Copy Backup to Target Server
-Transfer the entire downloaded folder (e.g., `olspanel_v3.0.16`) to the fresh server where you want to install OLSPanel. You can do this using `scp`, `rsync`, or an archive:
+### Step 1: Copy Backup to the Target Server
+Transfer the entire downloaded folder (e.g., `olspanel_v3.0.16`) to the fresh server. You can do this using `scp` or `rsync`:
 ```bash
 scp -r olspanel_v3.0.16 root@your-server-ip:/root/
 ```
 
-### Step 2: Start the Local File Server
-On the target server, navigate to the backup folder and start Python's built-in HTTP server:
+### Step 2: Run the Automated Installer
+On the target server, navigate into the backup folder and execute the automated installer script:
 ```bash
 cd /root/olspanel_v3.0.16
-python3 -m http.server 8000
+./offline_install.sh
 ```
-This serves all installer files, zips, and package files locally at `http://127.0.0.1:8000`.
+*Note: This single script automatically boots Python's built-in file server in the background on port 8000, triggers the installation pointing to it, and cleanly shuts down the file server when the installation completes.*
 
-### Step 3: Run the Patched Installer
-Open another SSH connection to your target server and run the installation command pointing to the local web server:
+---
+
+
+## 📦 Creating and Deploying Releases via GitHub
+
+To deploy backups on multiple target servers without committing large binary assets directly to your Git repository (keeping your repository clone size small), you can use the automated release helper script [create_release.py](file:///home/ongudidan/Projects/TOOLS/OLSPanel%20Full/create_release.py).
+
+This script automatically zips your backup folder, creates a GitHub Release, and uploads the compressed archive as a release asset in one step.
+
+### Step 1: Run the Release Script
+1. **Set your GitHub Token** (Optional, or the script will prompt you for it):
+   ```bash
+   export GITHUB_TOKEN="your_personal_access_token"
+   ```
+2. **Run the script**:
+   ```bash
+   python3 create_release.py
+   ```
+3. Follow the interactive prompts to select the backup folder, confirm details, and optionally delete the temporary local `.zip` file after a successful upload.
+
+### Step 2: Download & Install on Target Server
+On your fresh target server, download only the required release archive directly (no repository cloning needed):
 ```bash
-bash <(curl -fsSL http://127.0.0.1:8000/install.sh)
-```
+# Download the single release zip file (replace username/repo and version as needed)
+wget https://github.com/ongudidan/olspanel-backup-manager/releases/download/v3.0.16/olspanel_v3.0.16.zip
 
-The installer will perform all its setup routines, pulling scripts, compiled binaries, plugins, database structures, and the custom SURY PHP deb/rpm packages entirely from your local Python server.
-# olspanel-backup-manager
+# Unzip and run the automated installer
+unzip olspanel_v3.0.16.zip
+cd olspanel_v3.0.16/
+./offline_install.sh
+```

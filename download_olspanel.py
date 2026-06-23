@@ -405,29 +405,89 @@ def main():
 
 This backup has been patched to run entirely using a local web server, ensuring you do not require any connection to the developer's domains (`olspanel.com` or `github.com`).
 
-## Step 1: Transfer Backup to the Target Server
-Copy the entire `{os.path.basename(dest_path)}` folder to your fresh target server.
+An automated script `offline_install.sh` has been provided to completely automate this process.
 
-## Step 2: Start a Local Web Server
-On the target server, navigate into the backup folder and start a built-in Python web server to host the installer files locally:
-```bash
-cd {os.path.basename(dest_path)}
-python3 -m http.server 8000
-```
-This will host all backup files at `http://127.0.0.1:8000`.
+## Automated Installation (Single Command)
 
-## Step 3: Run the Patched Installer
-Open another terminal session on the target server and execute the patched installer:
+### Step 1: Copy Backup to the Target Server
+Copy the entire `{os.path.basename(dest_path)}` folder to your fresh target server:
 ```bash
-# Run the local installer pointing to the local web server
-bash <(curl -fsSL {local_url}/install.sh)
+scp -r {os.path.basename(dest_path)} root@your-server-ip:/root/
 ```
-The installer will pull all scripts, compiled binaries, packages, and database templates from your local server instead of making remote calls!
+
+### Step 2: Run the Automated Installer
+On the target server, navigate into the folder and run the automated installer:
+```bash
+cd /root/{os.path.basename(dest_path)}
+./offline_install.sh
+```
+This script will automatically start the local web server in the background, run the patched installation process, and shut down the server when completed!
+
+---
+
+## Manual Installation (Alternative)
+
+If you prefer to run it manually step-by-step:
+
+1. Start Python's built-in HTTP server in the backup folder on the target server:
+   ```bash
+   cd /root/{os.path.basename(dest_path)}
+   python3 -m http.server 8000
+   ```
+2. Open another terminal session on the target server and execute the patched installer:
+   ```bash
+   bash <(curl -fsSL {local_url}/install.sh)
+   ```
 """
         readme_path = os.path.join(dest_path, "README_OFFLINE.md")
         with open(readme_path, "w", encoding="utf-8") as f:
             f.write(readme_content)
         print(f"✓ Generated offline guide: {readme_path}")
+        
+        # Write offline_install.sh script
+        offline_install_content = f"""#!/bin/bash
+# OLSPanel Automated Local/Offline Installer
+
+SCRIPT_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+echo "=================================================="
+echo "🚀 Starting OLSPanel Automated Local Installer..."
+echo "=================================================="
+
+# Check if port 8000 is already in use
+if lsof -Pi :8000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+    echo "⚠️ Warning: Port 8000 is already in use. Assuming local file server is running."
+else
+    echo "1. Launching local file server on port 8000 in background..."
+    python3 -m http.server 8000 > /dev/null 2>&1 &
+    SERVER_PID=$!
+    
+    # Ensure the server is stopped when this script exits
+    cleanup() {{
+        echo ""
+        echo "🧹 Stopping local file server (PID: $SERVER_PID)..."
+        kill $SERVER_PID 2>/dev/null
+    }}
+    trap cleanup EXIT
+    
+    # Wait for the local server to start
+    sleep 2
+fi
+
+echo "2. Executing patched OLSPanel installer..."
+chmod +x install.sh
+./install.sh
+
+echo "=================================================="
+echo "🎉 Automated installer script finished!"
+echo "=================================================="
+"""
+        offline_install_path = os.path.join(dest_path, "offline_install.sh")
+        with open(offline_install_path, "w", encoding="utf-8") as f:
+            f.write(offline_install_content)
+        os.chmod(offline_install_path, 0o755)
+        print(f"✓ Generated automated local installer wrapper: {offline_install_path}")
     else:
         print("[Dry-run] Would patch all script files in destination to use local URL.")
         
