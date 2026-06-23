@@ -38,12 +38,15 @@ jobs:
           fi
           CLEAN_VER=$(echo "$INPUT_VERSION" | sed 's/^v//')
           
-          python3 download_olspanel.py --dest "olspanel_v$CLEAN_VER" --local-url "${INPUT_LOCAL_URL:-http://127.0.0.1:8000}"
+          # Generate a unique timestamp for this run
+          TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
+          
+          python3 download_olspanel.py --dest "olspanel_v${CLEAN_VER}_${TIMESTAMP}" --local-url "${INPUT_LOCAL_URL:-http://127.0.0.1:8000}"
 
       - name: Locate Output Folder & Set Env
         id: info
         run: |
-          # Find the created backup directory (e.g. olspanel_v3.0.16 or olspanel_backup_v3.0.16_...)
+          # Find the created backup directory
           FOLDER=""
           for d in olspanel_v* olspanel_backup_v*; do
             if [ -d "$d" ]; then
@@ -65,8 +68,21 @@ jobs:
             VERSION="3.0.16"
           fi
           
+          # Extract timestamp from folder name (e.g., 20260623_143400)
+          TIMESTAMP=$(echo "$FOLDER" | grep -oE '[0-9]{8}_[0-9]{6}' | head -n 1)
+          
+          if [ -n "$TIMESTAMP" ]; then
+            TAG_NAME="v${VERSION}-${TIMESTAMP}"
+            RELEASE_NAME="Version ${VERSION} (Build ${TIMESTAMP})"
+          else
+            TAG_NAME="v${VERSION}"
+            RELEASE_NAME="Version ${VERSION}"
+          fi
+          
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          echo "RELEASE_NAME=$RELEASE_NAME" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "✓ Found backup directory: $FOLDER (Version: $VERSION)"
+          echo "✓ Found backup directory: $FOLDER (Tag: $TAG_NAME, Title: $RELEASE_NAME)"
 
       - name: Zip Backup Folder
         run: |
@@ -76,8 +92,8 @@ jobs:
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.VERSION }}
-          name: Version ${{ env.VERSION }}
+          tag_name: ${{ env.TAG_NAME }}
+          name: ${{ env.RELEASE_NAME }}
           body: |
             Automated local/offline backup of OLSPanel Version ${{ env.VERSION }}.
             
@@ -86,7 +102,7 @@ jobs:
             ### Installation Instructions:
             1. Download this release zip on your target server:
                ```bash
-               wget https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/${{ env.FOLDER }}.zip
+               wget https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/${{ env.FOLDER }}.zip
                ```
             2. Extract and run the automated installer:
                ```bash

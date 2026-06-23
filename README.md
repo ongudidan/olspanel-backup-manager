@@ -101,13 +101,17 @@ If you prefer downloading the backup locally first and creating a release from y
 ---
 
 ### Step 2: Download & Install on Target Server
-On your fresh target server, download only the required release archive directly (no repository cloning needed):
-```bash
-# Download the single release zip file (replace username/repo and version as needed)
-wget https://github.com/ongudidan/olspanel-backup-manager/releases/download/v3.0.16/olspanel_v3.0.16.zip
+On your fresh target server, run the following commands to automatically resolve, download, and install the **latest** release backup:
 
-# Unzip and run the automated installer
-unzip olspanel_v3.0.16.zip
-cd olspanel_v3.0.16/
+```bash
+# 1. Resolve and download the latest release asset
+ZIP_URL=$(python3 -c "import urllib.request, json; print(json.loads(urllib.request.urlopen(urllib.request.Request('https://api.github.com/repos/ongudidan/olspanel-backup-manager/releases/latest', headers={'User-Agent': 'Mozilla'})).read().decode())['assets'][0]['browser_download_url'])")
+wget "$ZIP_URL"
+
+# 2. Extract and run the installer
+ZIP_FILE="${ZIP_URL##*/}"
+FOLDER="${ZIP_FILE%.zip}"
+unzip "$ZIP_FILE"
+cd "$FOLDER"
 ./offline_install.sh
 ```
