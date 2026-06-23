@@ -295,6 +295,57 @@ def patch_file(filepath, local_url):
             content
         )
         
+        # 4. Patch installer credentials to support running on top of an old installation
+        if filepath.endswith('.sh'):
+            # Replace root password generation to reuse existing one if available
+            target1 = 'PASSWORD=$(generate_mariadb_password)  # Change 16 to your desired password length'
+            replacement1 = r'''if [ -f "/usr/local/olspanel/mypanel/etc/mysqlPassword" ]; then
+    PASSWORD=$(cat "/usr/local/olspanel/mypanel/etc/mysqlPassword")
+    echo "Found existing MariaDB root password."
+else
+    PASSWORD=$(generate_mariadb_password)  # Change 16 to your desired password length
+    echo "Generated new MariaDB root password."
+fi'''
+            content = content.replace(target1, replacement1)
+
+            # Replace panel db user password generation to reuse existing one if available
+            target2 = r'''    # Generate a random password for the new user
+    local DB_PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
+    echo -n "${DB_PASSWORD}" > /root/db_credentials_panel.txt'''
+            replacement2 = r'''    # Generate a random password for the new user or load existing
+    local DB_PASSWORD=""
+    if [ -f "/usr/local/olspanel/mypanel/etc/dbPassword" ]; then
+        DB_PASSWORD=$(cat "/usr/local/olspanel/mypanel/etc/dbPassword")
+        echo "Found existing database password."
+    else
+        DB_PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
+        mkdir -p "/usr/local/olspanel/mypanel/etc"
+        echo -n "${DB_PASSWORD}" > "/usr/local/olspanel/mypanel/etc/dbPassword"
+        chmod 600 "/usr/local/olspanel/mypanel/etc/dbPassword"
+        echo "Generated new database password."
+    fi
+    echo -n "${DB_PASSWORD}" > /root/db_credentials_panel.txt'''
+            content = content.replace(target2, replacement2)
+
+            # Inject ALTER USER privilege adjustment for database user password updates
+            target3 = r'''CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
+GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';'''
+            replacement3 = r'''CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
+ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
+GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';'''
+            content = content.replace(target3, replacement3)
+
+            # Inject database tables import check to prevent overwriting existing data
+            target4 = r'''    echo "Importing database from '$DUMP_FILE' into '$DB_NAME'..."'''
+            replacement4 = r'''    # Check if database already has tables to avoid overwriting existing data
+    if mysql -u root -p"${ROOT_PASSWORD}" -e "USE \`$DB_NAME\`; SHOW TABLES;" 2>/dev/null | grep -q "[a-zA-Z0-9]"; then
+        echo "Database '$DB_NAME' already has tables. Skipping import to preserve existing data."
+        return 0
+    fi
+
+    echo "Importing database from '$DUMP_FILE' into '$DB_NAME'..."'''
+            content = content.replace(target4, replacement4)
+        
         if content != original_content:
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(content)
