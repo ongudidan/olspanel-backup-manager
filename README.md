@@ -101,14 +101,17 @@ If you prefer downloading the backup locally first and creating a release from y
 ---
 
 ### Step 2: Download & Install on Target Server
-On your fresh target server, run the following commands to automatically resolve, download, and install the **latest** release backup:
+On your fresh target server, run the following commands to automatically prepare the server, download the latest backup, and install it:
 
 ```bash
-# 1. Resolve and download the latest release asset
+# 1. Install required packages (unzip, curl, etc.)
+sudo apt update && sudo apt install unzip curl wget -y
+
+# 2. Resolve and download the latest release asset
 ZIP_URL=$(curl -s https://api.github.com/repos/ongudidan/olspanel-backup-manager/releases/latest | grep -oP '"browser_download_url": "\K[^"]+' | head -n 1)
 wget "$ZIP_URL"
 
-# 2. Extract and run the installer
+# 3. Extract and run the installer
 ZIP_FILE="${ZIP_URL##*/}"
 FOLDER="${ZIP_FILE%.zip}"
 unzip "$ZIP_FILE"

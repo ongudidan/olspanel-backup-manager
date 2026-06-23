@@ -100,16 +100,19 @@ jobs:
             This backup was built in the cloud and patched to run with the local installer server at `${{ github.event.inputs.local_url || 'http://127.0.0.1:8000' }}`.
             
             ### Installation Instructions:
-            1. Download this release zip on your target server:
-               ```bash
-               wget https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/${{ env.FOLDER }}.zip
-               ```
-            2. Extract and run the automated installer:
-               ```bash
-               unzip ${{ env.FOLDER }}.zip
-               cd ${{ env.FOLDER }}/
-               ./offline_install.sh
-               ```
+            On your target server, run:
+            ```bash
+            # 1. Install unzip and curl if not present
+            sudo apt update && sudo apt install unzip curl -y
+            
+            # 2. Download this release zip:
+            wget https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/${{ env.FOLDER }}.zip
+            
+            # 3. Extract and run the automated installer:
+            unzip ${{ env.FOLDER }}.zip
+            cd ${{ env.FOLDER }}/
+            ./offline_install.sh
+            ```
           files: ${{ env.FOLDER }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
