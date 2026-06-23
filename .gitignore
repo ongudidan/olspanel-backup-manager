@@ -1,0 +1,10 @@
+# Downloader backups and zip releases
+olspanel_v*/
+olspanel_backup_v*/
+*.zip
+*.tmp
+
+# IDE / System files
+.DS_Store
+.vscode/
+.idea/

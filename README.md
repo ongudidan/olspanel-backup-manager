@@ -59,20 +59,46 @@ cd /root/olspanel_v3.0.16
 
 ## 📦 Creating and Deploying Releases via GitHub
 
-To deploy backups on multiple target servers without committing large binary assets directly to your Git repository (keeping your repository clone size small), you can use the automated release helper script [create_release.py](file:///home/ongudidan/Projects/TOOLS/OLSPanel%20Full/create_release.py).
+To deploy backups on multiple target servers without committing large binary assets directly to your Git repository (keeping your repository clone size small), you can create releases either in the cloud using GitHub Actions (recommended) or locally using our script.
 
-This script automatically zips your backup folder, creates a GitHub Release, and uploads the compressed archive as a release asset in one step.
+### Method A: Cloud Release via GitHub Actions (Recommended & Easiest)
+This method runs entirely in the cloud on GitHub's servers, requiring **zero local download/upload bandwidth** and **no Personal Access Tokens**.
 
-### Step 1: Run the Release Script
-1. **Set your GitHub Token** (Optional, or the script will prompt you for it):
+1. Commit and push the scripts to your GitHub repository:
+   ```bash
+   git add .
+   git commit -m "Add GitHub Actions workflow"
+   git push origin main
+   ```
+2. Go to your repository page on GitHub.
+3. Click the **Actions** tab at the top.
+4. Select the **Build and Release OLSPanel Backup** workflow on the left.
+5. Click the **Run workflow** dropdown on the right:
+   * (Optional) Specify the OLSPanel Version (e.g., `3.0.16`). If left blank, it will auto-detect the latest version.
+   * (Optional) Adjust the local patching URL if your offline server runs on a different port/IP.
+6. Click **Run workflow**. In about 1–2 minutes, a new GitHub Release will automatically be created with the zipped backup asset attached!
+
+---
+
+### Method B: Local Release via Python Script (Alternative)
+If you prefer downloading the backup locally first and creating a release from your computer:
+
+1. **Get a GitHub Personal Access Token**:
+   Since standard passwords are not supported, generate a **Fine-grained Personal Access Token**:
+   * Go to GitHub -> **Settings** -> **Developer settings** -> **Personal access tokens** -> **Fine-grained tokens**.
+   * Click **Generate new token**.
+   * Under **Repository access**, select **Only select repositories** and choose `olspanel-backup-manager`.
+   * Under **Repository permissions**, set **Contents** to **Read and Write**.
+   * Click **Generate token** and copy it.
+
+2. **Run the release script**:
    ```bash
    export GITHUB_TOKEN="your_personal_access_token"
-   ```
-2. **Run the script**:
-   ```bash
    python3 create_release.py
    ```
-3. Follow the interactive prompts to select the backup folder, confirm details, and optionally delete the temporary local `.zip` file after a successful upload.
+3. Follow the interactive prompts to confirm details.
+
+---
 
 ### Step 2: Download & Install on Target Server
 On your fresh target server, download only the required release archive directly (no repository cloning needed):

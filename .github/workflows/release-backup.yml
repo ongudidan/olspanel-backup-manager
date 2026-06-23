@@ -1,0 +1,100 @@
+name: Build and Release OLSPanel Backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'OLSPanel Version (leave empty to auto-detect latest)'
+        required: false
+        default: ''
+      local_url:
+        description: 'Local URL for patching'
+        required: false
+        default: 'http://127.0.0.1:8000'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run Downloader & Patcher
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_LOCAL_URL: ${{ github.event.inputs.local_url }}
+        run: |
+          VERSION_ARG=""
+          if [ -n "$INPUT_VERSION" ]; then
+            # Clean version string (remove 'v' prefix if entered)
+            CLEAN_VER=$(echo "$INPUT_VERSION" | sed 's/^v//')
+            VERSION_ARG="--dest olspanel_v$CLEAN_VER"
+          fi
+          
+          python3 download_olspanel.py $VERSION_ARG --local-url "${INPUT_LOCAL_URL:-http://127.0.0.1:8000}"
+
+      - name: Locate Output Folder & Set Env
+        id: info
+        run: |
+          # Find the created backup directory (e.g. olspanel_v3.0.16 or olspanel_backup_v3.0.16_...)
+          FOLDER=""
+          for d in olspanel_v* olspanel_backup_v*; do
+            if [ -d "$d" ]; then
+              FOLDER="$d"
+              break
+            fi
+          done
+          
+          if [ -z "$FOLDER" ]; then
+            echo "❌ Error: No backup directory found!"
+            exit 1
+          fi
+          
+          echo "FOLDER=$FOLDER" >> $GITHUB_ENV
+          
+          # Extract version number from folder name (e.g., 3.0.16)
+          VERSION=$(echo "$FOLDER" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
+          if [ -z "$VERSION" ]; then
+            VERSION="3.0.16"
+          fi
+          
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "✓ Found backup directory: $FOLDER (Version: $VERSION)"
+
+      - name: Zip Backup Folder
+        run: |
+          zip -r ${{ env.FOLDER }}.zip ${{ env.FOLDER }}/
+          echo "✓ Archive created: ${{ env.FOLDER }}.zip"
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Version ${{ env.VERSION }}
+          body: |
+            Automated local/offline backup of OLSPanel Version ${{ env.VERSION }}.
+            
+            This backup was built in the cloud and patched to run with the local installer server at `${{ github.event.inputs.local_url || 'http://127.0.0.1:8000' }}`.
+            
+            ### Installation Instructions:
+            1. Download this release zip on your target server:
+               ```bash
+               wget https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}/${{ env.FOLDER }}.zip
+               ```
+            2. Extract and run the automated installer:
+               ```bash
+               unzip ${{ env.FOLDER }}.zip
+               cd ${{ env.FOLDER }}/
+               ./offline_install.sh
+               ```
+          files: ${{ env.FOLDER }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
