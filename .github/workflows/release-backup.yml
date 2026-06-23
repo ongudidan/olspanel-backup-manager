@@ -32,14 +32,13 @@ jobs:
           INPUT_VERSION: ${{ github.event.inputs.version }}
           INPUT_LOCAL_URL: ${{ github.event.inputs.local_url }}
         run: |
-          VERSION_ARG=""
-          if [ -n "$INPUT_VERSION" ]; then
-            # Clean version string (remove 'v' prefix if entered)
-            CLEAN_VER=$(echo "$INPUT_VERSION" | sed 's/^v//')
-            VERSION_ARG="--dest olspanel_v$CLEAN_VER"
+          if [ -z "$INPUT_VERSION" ]; then
+            # Auto-detect latest version from the official site using python
+            INPUT_VERSION=$(python3 -c "import urllib.request, re; r = urllib.request.urlopen('https://olspanel.com'); html = r.read().decode('utf-8', errors='ignore'); m = re.search(r'version\s*\(?([0-9.]+)\)?', html, re.I); print(m.group(1) if m else '3.0.16')")
           fi
+          CLEAN_VER=$(echo "$INPUT_VERSION" | sed 's/^v//')
           
-          python3 download_olspanel.py $VERSION_ARG --local-url "${INPUT_LOCAL_URL:-http://127.0.0.1:8000}"
+          python3 download_olspanel.py --dest "olspanel_v$CLEAN_VER" --local-url "${INPUT_LOCAL_URL:-http://127.0.0.1:8000}"
 
       - name: Locate Output Folder & Set Env
         id: info
