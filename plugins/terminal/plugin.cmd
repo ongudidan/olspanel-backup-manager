@@ -10,6 +10,54 @@ if [ ! -d "$BASE_DIR" ]; then
   fi
 fi
 
+# Detect active PHP version and install php-ssh2 extension if missing
+if ! php -m | grep -qi ssh2 2>/dev/null; then
+  echo "Installing PHP SSH2 extension..."
+  PHP_VER=$(php -r "echo PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;" 2>/dev/null)
+  if [ -n "$PHP_VER" ]; then
+    apt-get update -y
+    apt-get install -y "php${PHP_VER}-ssh2" || apt-get install -y php-ssh2
+  else
+    apt-get update -y && apt-get install -y php-ssh2
+  fi
+fi
+
+# Configure SSHD to allow password authentication for loopback connections (safe & required for PHP terminal wrapper)
+SSHD_CONFIG="/etc/ssh/sshd_config"
+if [ -f "$SSHD_CONFIG" ]; then
+  if ! grep -q "Match Address 127.0.0.1,::1" "$SSHD_CONFIG"; then
+    echo -e "\nMatch Address 127.0.0.1,::1\n    PasswordAuthentication yes" >> "$SSHD_CONFIG"
+    if sshd -t; then
+      if systemctl is-active --quiet sshd 2>/dev/null; then
+        systemctl restart sshd
+      elif systemctl is-active --quiet ssh 2>/dev/null; then
+        systemctl restart ssh
+      fi
+      echo "✅ SSHD loopback password authentication configured successfully"
+    else
+      # Revert changes if configuration test fails
+      sed -i '/Match Address 127.0.0.1,::1/,+1d' "$SSHD_CONFIG"
+      echo "❌ Error: sshd config test failed after adding loopback match, reverted changes"
+    fi
+  else
+    echo "ℹ️ SSHD loopback password authentication already configured"
+  fi
+fi
+
+# Automatically deploy the Django module from the bundled terminal_module.zip
+MODULE_ZIP="$BASE_DIR/3rdparty/terminal/terminal_module.zip"
+MODULE_DEST="$BASE_DIR/modules/terminal"
+
+if [ -f "$MODULE_ZIP" ]; then
+  mkdir -p "$BASE_DIR/modules"
+  unzip -o "$MODULE_ZIP" -d "$BASE_DIR/modules/"
+  chown -R www-data:www-data "$MODULE_DEST"
+  echo "✅ Django terminal module unzipped and deployed to $MODULE_DEST"
+else
+  echo "❌ Error: Django terminal module zip not found at $MODULE_ZIP"
+  exit 1
+fi
+
 DECORATORS_FILE="$BASE_DIR/users/decorators.py"
 MIDDLEWARE_FILE="$BASE_DIR/users/middleware/LicenseMiddleware.py"
 FUNCTIONS_FILE="$BASE_DIR/users/function.py"
@@ -204,6 +252,19 @@ for file_path in files:
                 f.write(content)
             print('Patched jQuery CDN link in: ' + file_path)
 "
+
+# Deploy SVG vector icon for color adaptation support
+ICON_SRC="$BASE_DIR/3rdparty/terminal/plugin_icon.svg"
+ICON_DEST="$BASE_DIR/media/icon/terminal.svg"
+
+if [ -f "$ICON_SRC" ]; then
+  cp -f "$ICON_SRC" "$ICON_DEST"
+  chown www-data:www-data "$ICON_DEST"
+  echo "✅ SVG vector icon deployed to $ICON_DEST"
+else
+  echo "❌ Error: SVG icon source not found: $ICON_SRC"
+  exit 1
+fi
 
 # Asynchronously restart the OLSPanel service to load changes
 if systemctl is-active --quiet cp 2>/dev/null; then

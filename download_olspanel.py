@@ -451,6 +451,27 @@ if [ $? -ne 0 ]; then
 fi
 setup_cp_service_with_port'''
                 content = content.replace(target_call, replacement_call)
+
+                # Patch display_success_message to write credentials to /root/panel_credentials.txt for offline installer display
+                target_msg = r'''    # Print success message in green
+    printf "%sYou have successfully installed OLSPanel!\n" "$GREEN"
+    printf "Admin URL is: https://%s:%s\n" "$IP" "$PORT"
+    printf "Username: admin\n"
+    printf "Password: %s%s\n" "$DB_PASSWORDx" "$NC"'''
+                replacement_msg = r'''    # Print success message in green
+    printf "%sYou have successfully installed OLSPanel!\n" "$GREEN"
+    printf "Admin URL is: https://%s:%s\n" "$IP" "$PORT"
+    printf "Username: admin\n"
+    printf "Password: %s%s\n" "$DB_PASSWORDx" "$NC"
+
+    # Save credentials for offline installer or display reference
+    echo "==================================================" > /root/panel_credentials.txt
+    echo "🎉 OLSPanel login credentials:" >> /root/panel_credentials.txt
+    echo "Admin URL : https://$IP:$PORT" >> /root/panel_credentials.txt
+    echo "Username  : admin" >> /root/panel_credentials.txt
+    echo "Password  : $DB_PASSWORDx" >> /root/panel_credentials.txt
+    echo "==================================================" >> /root/panel_credentials.txt'''
+                content = content.replace(target_msg, replacement_msg)
             
         # 5. Patch install_cp_plugin to resolve relative paths
         if os.path.basename(filepath) == 'install_cp_plugin':
@@ -688,6 +709,13 @@ fi
 echo "=================================================="
 echo "🎉 Automated installer script finished!"
 echo "=================================================="
+
+# Print login credentials at the very end so they are not pushed up by plugin installations
+if [ -f "/root/panel_credentials.txt" ]; then
+    echo ""
+    cat /root/panel_credentials.txt
+    echo ""
+fi
 """
         offline_install_path = os.path.join(dest_path, "offline_install.sh")
         with open(offline_install_path, "w", encoding="utf-8") as f:
