@@ -452,25 +452,23 @@ fi
 setup_cp_service_with_port'''
                 content = content.replace(target_call, replacement_call)
 
-                # Patch display_success_message to write credentials to /root/panel_credentials.txt for offline installer display
-                target_msg = r'''    # Print success message in green
-    printf "%sYou have successfully installed OLSPanel!\n" "$GREEN"
-    printf "Admin URL is: https://%s:%s\n" "$IP" "$PORT"
-    printf "Username: admin\n"
-    printf "Password: %s%s\n" "$DB_PASSWORDx" "$NC"'''
-                replacement_msg = r'''    # Print success message in green
-    printf "%sYou have successfully installed OLSPanel!\n" "$GREEN"
-    printf "Admin URL is: https://%s:%s\n" "$IP" "$PORT"
-    printf "Username: admin\n"
-    printf "Password: %s%s\n" "$DB_PASSWORDx" "$NC"
+                # Inject custom plugin installations right before display_success_message
+                target_msg = 'display_success_message'
+                replacement_msg = r'''# Automatically install custom plugins from local server if running
+if [ -f "/usr/local/bin/install_cp_plugin" ]; then
+    if wget --spider "http://127.0.0.1:8000/plugin/git_deploy.zip" >/dev/null 2>&1; then
+        echo "Installing Git Deploy Plugin..."
+        wget -O /tmp/git_deploy.zip "http://127.0.0.1:8000/plugin/git_deploy.zip" && /usr/local/bin/install_cp_plugin /tmp/git_deploy.zip
+        rm -f /tmp/git_deploy.zip
+    fi
+    if wget --spider "http://127.0.0.1:8000/plugin/terminal.zip" >/dev/null 2>&1; then
+        echo "Installing Terminal Plugin..."
+        wget -O /tmp/terminal.zip "http://127.0.0.1:8000/plugin/terminal.zip" && /usr/local/bin/install_cp_plugin /tmp/terminal.zip
+        rm -f /tmp/terminal.zip
+    fi
+fi
 
-    # Save credentials for offline installer or display reference
-    echo "==================================================" > /root/panel_credentials.txt
-    echo "🎉 OLSPanel login credentials:" >> /root/panel_credentials.txt
-    echo "Admin URL : https://$IP:$PORT" >> /root/panel_credentials.txt
-    echo "Username  : admin" >> /root/panel_credentials.txt
-    echo "Password  : $DB_PASSWORDx" >> /root/panel_credentials.txt
-    echo "==================================================" >> /root/panel_credentials.txt'''
+display_success_message'''
                 content = content.replace(target_msg, replacement_msg)
             
         # 5. Patch install_cp_plugin to resolve relative paths
@@ -694,28 +692,9 @@ echo "2. Executing patched OLSPanel installer..."
 chmod +x install.sh
 ./install.sh
 
-# Automatically install custom terminal plugin if available
-if [ -f "/usr/local/bin/install_cp_plugin" ] && [ -f "$SCRIPT_DIR/plugin/terminal.zip" ]; then
-    echo "3. Automatically installing OLSPanel Terminal Plugin..."
-    /usr/local/bin/install_cp_plugin "$SCRIPT_DIR/plugin/terminal.zip"
-fi
-
-# Automatically install custom git deploy plugin if available
-if [ -f "/usr/local/bin/install_cp_plugin" ] && [ -f "$SCRIPT_DIR/plugin/git_deploy.zip" ]; then
-    echo "4. Automatically installing OLSPanel Git Deploy Plugin..."
-    /usr/local/bin/install_cp_plugin "$SCRIPT_DIR/plugin/git_deploy.zip"
-fi
-
 echo "=================================================="
 echo "🎉 Automated installer script finished!"
 echo "=================================================="
-
-# Print login credentials at the very end so they are not pushed up by plugin installations
-if [ -f "/root/panel_credentials.txt" ]; then
-    echo ""
-    cat /root/panel_credentials.txt
-    echo ""
-fi
 """
         offline_install_path = os.path.join(dest_path, "offline_install.sh")
         with open(offline_install_path, "w", encoding="utf-8") as f:
