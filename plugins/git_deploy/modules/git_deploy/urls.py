@@ -8,6 +8,7 @@ urlpatterns = [
     path('delete/<int:dep_id>/', views.delete_deployment_view, name='git_deploy_delete'),
     path('logs/<int:dep_id>/', views.get_logs_view, name='git_deploy_logs'),
     path('deploy/<int:dep_id>/', views.trigger_manual_deploy_view, name='git_deploy_trigger'),
+    path('deploy/stream/<int:log_id>/', views.log_stream_view, name='git_deploy_log_stream'),
     path('token/', views.manage_token_view, name='git_deploy_token'),
     path('repos/', views.fetch_github_repos_view, name='git_deploy_repos'),
     path('settings/', views.manage_settings_view, name='git_deploy_settings'),

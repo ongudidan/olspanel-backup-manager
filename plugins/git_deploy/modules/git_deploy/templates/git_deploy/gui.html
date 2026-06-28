@@ -543,9 +543,15 @@ function openModal(id) {
 function closeModal(id) {
     const modal = document.getElementById(id);
     modal.style.display = "none";
-    if (id === 'logsDrawerModal' && window.logPollingInterval) {
-        clearInterval(window.logPollingInterval);
-        window.logPollingInterval = null;
+    if (id === 'logsDrawerModal') {
+        if (window.logPollingInterval) {
+            clearInterval(window.logPollingInterval);
+            window.logPollingInterval = null;
+        }
+        if (window.activeLogStreamReader) {
+            window.activeLogStreamReader.cancel();
+            window.activeLogStreamReader = null;
+        }
     }
 }
 
@@ -714,10 +720,89 @@ function updateMainPageStatus(depId, status, latestLog) {
     }
 }
 
+window.activeLogStreamReader = null;
+
+function streamLogOutput(logId, logBodyElement, depId, deployBtn) {
+    if (window.activeLogStreamReader) {
+        window.activeLogStreamReader.cancel();
+        window.activeLogStreamReader = null;
+    }
+
+    logBodyElement.textContent = "🚀 Connecting to live log stream...\n";
+
+    fetch(`/module/git_deploy/deploy/stream/${logId}/`)
+    .then(async res => {
+        if (!res.ok) {
+            logBodyElement.textContent += "\n❌ Error connecting to log stream.";
+            return;
+        }
+
+        const reader = res.body.getReader();
+        window.activeLogStreamReader = reader;
+        const decoder = new TextDecoder("utf-8");
+
+        logBodyElement.textContent = ""; // Clear loader message
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                logBodyElement.textContent += chunk;
+                logBodyElement.scrollTop = logBodyElement.scrollHeight;
+            }
+        } catch (err) {
+            logBodyElement.textContent += "\n\n❌ Stream interrupted: " + err;
+        } finally {
+            window.activeLogStreamReader = null;
+            if (deployBtn) {
+                deployBtn.disabled = false;
+                deployBtn.innerHTML = "🚀 Deploy Now";
+            }
+            refreshLogsList(depId);
+        }
+    })
+    .catch(err => {
+        logBodyElement.textContent += "\n❌ Connection error: " + err;
+        if (deployBtn) {
+            deployBtn.disabled = false;
+            deployBtn.innerHTML = "🚀 Deploy Now";
+        }
+    });
+}
+
+function refreshLogsList(depId) {
+    fetch(`/module/git_deploy/logs/${depId}/`)
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === "success" && data.logs.length > 0) {
+            const container = document.getElementById('logsContainer');
+            container.innerHTML = "";
+            data.logs.forEach((log, index) => {
+                const logItem = createLogAccordionElement(log);
+                container.appendChild(logItem);
+                
+                // Keep the first/latest log expanded if it was the one we just streamed
+                if (index === 0) {
+                    const body = logItem.querySelector('.log-body');
+                    const arrow = logItem.querySelector('.log-arrow');
+                    body.style.display = "block";
+                    body.scrollTop = body.scrollHeight;
+                    logItem.querySelector('.log-header').style.borderBottomColor = "#e2e8f0";
+                    if (arrow) arrow.textContent = "▲";
+                }
+            });
+            const latestLog = data.logs[0];
+            updateMainPageStatus(depId, latestLog.status, latestLog);
+        }
+    });
+}
+
 function openLogsModal(depId, activeLogId = null) {
-    if (window.logPollingInterval) {
-        clearInterval(window.logPollingInterval);
-        window.logPollingInterval = null;
+    if (window.activeLogStreamReader) {
+        window.activeLogStreamReader.cancel();
+        window.activeLogStreamReader = null;
     }
 
     const container = document.getElementById('logsContainer');
@@ -727,91 +812,41 @@ function openLogsModal(depId, activeLogId = null) {
     // Find the deploy button on main page to re-enable/disable it
     const deployBtn = document.querySelector(`button[onclick*="triggerManualDeploy(${depId},"]`);
     
-    function fetchAndRenderLogs(isPoll = false) {
-        fetch(`/module/git_deploy/logs/${depId}/`)
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === "success" && data.logs.length > 0) {
-                if (isPoll) {
-                    // Update existing DOM elements
-                    data.logs.forEach((log, index) => {
-                        const existingAccordion = document.getElementById(`logRun_${log.id}`);
-                        if (existingAccordion) {
-                            // Update status badge
-                            const badgeContainer = existingAccordion.querySelector('.log-status-badge-container');
-                            if (badgeContainer) {
-                                badgeContainer.innerHTML = getStatusBadgeHtml(log.status);
-                            }
-                            // Update log body content
-                            const logBody = existingAccordion.querySelector('.log-body');
-                            if (logBody) {
-                                const isAtBottom = logBody.scrollHeight - logBody.clientHeight <= logBody.scrollTop + 40;
-                                logBody.innerHTML = escapeHtml(log.log_output || 'No log details available.');
-                                // If scroll was near bottom, auto-scroll to the bottom of the log stream
-                                if (isAtBottom || log.status === 'pending') {
-                                    logBody.scrollTop = logBody.scrollHeight;
-                                }
-                            }
-                        } else {
-                            // Prepend new run to the top of list
-                            const logItem = createLogAccordionElement(log);
-                            container.insertBefore(logItem, container.firstChild);
-                        }
-                    });
+    fetch(`/module/git_deploy/logs/${depId}/`)
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === "success" && data.logs.length > 0) {
+            container.innerHTML = "";
+            data.logs.forEach((log, index) => {
+                const logItem = createLogAccordionElement(log);
+                container.appendChild(logItem);
+                
+                // Expand the first/latest log if it is pending or matches activeLogId
+                if (index === 0 && (log.status === 'pending' || log.id === activeLogId)) {
+                    const body = logItem.querySelector('.log-body');
+                    const arrow = logItem.querySelector('.log-arrow');
+                    body.style.display = "block";
+                    body.scrollTop = body.scrollHeight;
+                    logItem.querySelector('.log-header').style.borderBottomColor = "#e2e8f0";
+                    if (arrow) arrow.textContent = "▲";
                     
-                    // Stop polling if the latest run is complete
-                    const latestLog = data.logs[0];
-                    if (latestLog.status !== 'pending') {
-                        clearInterval(window.logPollingInterval);
-                        window.logPollingInterval = null;
-                        if (deployBtn) {
-                            deployBtn.disabled = false;
-                            deployBtn.innerHTML = "🚀 Deploy Now";
-                        }
-                        updateMainPageStatus(depId, latestLog.status, latestLog);
-                    }
-                } else {
-                    // Initial load
-                    container.innerHTML = "";
-                    data.logs.forEach((log, index) => {
-                        const logItem = createLogAccordionElement(log);
-                        container.appendChild(logItem);
-                        
-                        // Expand the first/latest log if it is pending or matches activeLogId
-                        if (index === 0 && (log.status === 'pending' || log.id === activeLogId)) {
-                            const body = logItem.querySelector('.log-body');
-                            const arrow = logItem.querySelector('.log-arrow');
-                            body.style.display = "block";
-                            body.scrollTop = body.scrollHeight;
-                            logItem.querySelector('.log-header').style.borderBottomColor = "#e2e8f0";
-                            if (arrow) arrow.textContent = "▲";
-                        }
-                    });
-                    
-                    // Start polling if latest is pending
-                    const latestLog = data.logs[0];
-                    if (latestLog.status === 'pending') {
+                    // If it is pending, start streaming
+                    if (log.status === 'pending') {
                         if (deployBtn) {
                             deployBtn.disabled = true;
                             deployBtn.innerHTML = "⏳ Deploying...";
                         }
-                        window.logPollingInterval = setInterval(() => {
-                            fetchAndRenderLogs(true);
-                        }, 1500);
+                        streamLogOutput(log.id, body, depId, deployBtn);
                     }
                 }
-            } else {
-                container.innerHTML = "<div style='color:#64748b; text-align:center;'>No deployment runs found for this project.</div>";
-            }
-        })
-        .catch(err => {
-            if (!isPoll) {
-                container.innerHTML = "<div style='color:#ef4444; text-align:center;'>Failed to load deployment history.</div>";
-            }
-        });
-    }
-
-    fetchAndRenderLogs(false);
+            });
+        } else {
+            container.innerHTML = "<div style='color:#64748b; text-align:center;'>No deployment runs found for this project.</div>";
+        }
+    })
+    .catch(err => {
+        container.innerHTML = "<div style='color:#ef4444; text-align:center;'>Failed to load deployment history.</div>";
+    });
 }
 
 function toggleLogBody(headerElement) {

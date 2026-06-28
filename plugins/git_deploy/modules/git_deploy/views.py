@@ -8,11 +8,12 @@ import json
 import tempfile
 import shutil
 import subprocess
+import time
 from datetime import datetime
 from threading import Thread
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render, redirect, get_object_or_404
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, StreamingHttpResponse
 from django.db import connection
 from users.models import Domain
 from django.contrib.auth import get_user_model
@@ -33,8 +34,8 @@ def normalize_git_url(url):
     url = re.sub(r'^[^/:]+[:/]', '', url) # strip host prefix
     return url
 
-def run_cmd_as_user(username, cmd, cwd, env_vars=None):
-    """Executes a command as a specific Linux user using sudo"""
+def run_cmd_as_user_stream(username, cmd, cwd, log_func, env_vars=None):
+    """Executes a command as a specific Linux user using sudo and streams its stdout/stderr"""
     full_cmd = ['sudo', '-H', '-u', username]
     
     # Inject Git SSH configuration if supplied
@@ -43,14 +44,22 @@ def run_cmd_as_user(username, cmd, cwd, env_vars=None):
         
     full_cmd += cmd
     
-    res = subprocess.run(
+    process = subprocess.Popen(
         full_cmd, 
         cwd=cwd, 
-        capture_output=True, 
+        stdout=subprocess.PIPE, 
+        stderr=subprocess.STDOUT, 
         text=True, 
-        timeout=300
+        bufsize=1
     )
-    return res.returncode, res.stdout, res.stderr
+    
+    for line in iter(process.stdout.readline, ''):
+        if line:
+            log_func(line.rstrip('\r\n'))
+            
+    process.stdout.close()
+    return_code = process.wait()
+    return return_code
 
 def create_pending_log(dep_id, commit_info=None):
     commit_hash = commit_info.get('hash') if commit_info else None
@@ -87,8 +96,12 @@ def deploy_worker(deployment_id, log_id, commit_info=None):
     status = 'success'
     log_lines = []
     
-    def log(message):
-        log_lines.append(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
+    def log(message, with_timestamp=True):
+        if with_timestamp:
+            formatted = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}"
+        else:
+            formatted = message
+        log_lines.append(formatted)
         log_text = "\n".join(log_lines)
         with connection.cursor() as cursor:
             cursor.execute("""
@@ -141,10 +154,10 @@ def deploy_worker(deployment_id, log_id, commit_info=None):
             
             for cmd, desc in steps:
                 log(f"Running: {desc}...")
-                code, out, err = run_cmd_as_user(username, cmd, deploy_path, env_vars)
+                code = run_cmd_as_user_stream(username, cmd, deploy_path, lambda msg: log(msg, with_timestamp=False), env_vars)
                 if code != 0:
                     status = 'failed'
-                    log(f"FAILED: {desc}\nSTDOUT:\n{out}\nSTDERR:\n{err}")
+                    log(f"FAILED: {desc} (Exit code: {code})")
                     break
                 else:
                     log(f"SUCCESS: {desc}")
@@ -157,10 +170,10 @@ def deploy_worker(deployment_id, log_id, commit_info=None):
             
             for cmd, desc in steps:
                 log(f"Running: {desc}...")
-                code, out, err = run_cmd_as_user(username, cmd, deploy_path, env_vars)
+                code = run_cmd_as_user_stream(username, cmd, deploy_path, lambda msg: log(msg, with_timestamp=False), env_vars)
                 if code != 0:
                     status = 'failed'
-                    log(f"FAILED: {desc}\nSTDOUT:\n{out}\nSTDERR:\n{err}")
+                    log(f"FAILED: {desc} (Exit code: {code})")
                     break
                 else:
                     log(f"SUCCESS: {desc}")
@@ -168,9 +181,9 @@ def deploy_worker(deployment_id, log_id, commit_info=None):
         # Pull submodules if present
         if status == 'success' and os.path.exists(os.path.join(deploy_path, '.gitmodules')):
             log("Initializing and updating submodules...")
-            code, out, err = run_cmd_as_user(username, ['git', 'submodule', 'update', '--init', '--recursive'], deploy_path, env_vars)
+            code = run_cmd_as_user_stream(username, ['git', 'submodule', 'update', '--init', '--recursive'], deploy_path, lambda msg: log(msg, with_timestamp=False), env_vars)
             if code != 0:
-                log(f"Submodule check returned warning:\nSTDOUT:\n{out}\nSTDERR:\n{err}")
+                log(f"Submodule check returned warning (Exit code: {code})")
             else:
                 log("Submodules updated successfully.")
 
@@ -618,6 +631,58 @@ def get_logs_view(request, dep_id):
         logs = [dict(zip(columns, row)) for row in cursor.fetchall()]
         
     return JsonResponse({"status": "success", "logs": logs})
+
+
+@loginadminoruser
+def log_stream_view(request, log_id):
+    """Streams the log output for a given log ID in real-time"""
+    user = get_authenticated_user(request)
+    is_admin = hasattr(request, 'admin_user') and request.admin_user
+    
+    # Verify ownership of the deployment associated with this log
+    with connection.cursor() as cursor:
+        if user.is_superuser or is_admin:
+            cursor.execute("""
+                SELECT l.id FROM git_deployment_logs l
+                JOIN git_deployments d ON l.deployment_id = d.id
+                WHERE l.id = %s
+            """, [log_id])
+        else:
+            cursor.execute("""
+                SELECT l.id FROM git_deployment_logs l
+                JOIN git_deployments d ON l.deployment_id = d.id
+                WHERE l.id = %s AND d.userid_id = %s
+            """, [log_id, user.id])
+        if not cursor.fetchone():
+            return HttpResponse("Unauthorized", status=403)
+            
+    def event_stream():
+        last_pos = 0
+        timeout_limit = 300  # 5 minutes safety timeout
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout_limit:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT status, log_output FROM git_deployment_logs WHERE id = %s", [log_id])
+                row = cursor.fetchone()
+                
+            if not row:
+                break
+                
+            status, log_output = row
+            log_output = log_output or ""
+            
+            if len(log_output) > last_pos:
+                new_text = log_output[last_pos:]
+                last_pos = len(log_output)
+                yield new_text
+                
+            if status != 'pending':
+                break
+                
+            time.sleep(0.2)
+            
+    return StreamingHttpResponse(event_stream(), content_type='text/plain')
 
 
 @loginadminoruser
