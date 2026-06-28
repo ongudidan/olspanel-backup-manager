@@ -22,8 +22,12 @@ from users.decorators import loginadminoruser
 User = get_user_model()
 
 def get_authenticated_user(request):
-    """Retrieves authenticated admin or standard user"""
-    return getattr(request, 'admin_user', None) or (request.user if request.user.is_authenticated else None)
+    """Retrieves authenticated admin or standard user, respecting admin impersonation"""
+    if hasattr(request, 'admin_user') and request.admin_user:
+        if request.user and request.user.is_authenticated and request.user != request.admin_user:
+            return request.user
+        return request.admin_user
+    return request.user if request.user.is_authenticated else None
 
 def normalize_git_url(url):
     """Normalizes various git URL formats (HTTPS, SSH, etc.) to organization/repo style"""
@@ -213,7 +217,13 @@ def deploy_worker(deployment_id, log_id, commit_info=None):
 def gui_view(request):
     """Main dashboard interface"""
     user = get_authenticated_user(request)
-    is_admin = hasattr(request, 'admin_user') and request.admin_user
+    # Determine if admin is impersonating a user (request.user != request.admin_user)
+    is_impersonating = False
+    if hasattr(request, 'admin_user') and request.admin_user:
+        if request.user and request.user.is_authenticated and request.user != request.admin_user:
+            is_impersonating = True
+            
+    is_admin = hasattr(request, 'admin_user') and request.admin_user and not is_impersonating
     
     # Get standard domains for this user
     if user.is_superuser or is_admin:
@@ -268,18 +278,25 @@ def gui_view(request):
     # Fetch OAuth settings to see if configured
     settings = {}
     with connection.cursor() as cursor:
-        cursor.execute("SELECT setting_key, setting_value FROM git_settings WHERE setting_key IN ('github_client_id', 'github_client_secret')")
+        cursor.execute("SELECT setting_key, setting_value FROM git_settings WHERE setting_key IN ('github_client_id', 'github_client_secret', 'github_app_slug')")
         for key, value in cursor.fetchall():
             settings[key] = value
             
     github_client_id = settings.get('github_client_id', '')
     github_client_secret = settings.get('github_client_secret', '')
+    github_app_slug = settings.get('github_app_slug', '')
     oauth_configured = bool(github_client_id and github_client_secret)
 
     # Calculate webhook base URL
     host = request.get_host()
     protocol = 'https' if request.is_secure() else 'http'
     webhook_url = f"{protocol}://{host}/module/git_deploy/webhook/"
+
+    # Determine base template (respect impersonation)
+    if hasattr(request, 'admin_user') and request.admin_user and not is_impersonating:
+        base_template = 'whm/base.html'
+    else:
+        base_template = 'users/base.html'
 
     return render(request, 'git_deploy/gui.html', {
         'domains': domains,
@@ -288,7 +305,9 @@ def gui_view(request):
         'has_github_token': has_github_token,
         'oauth_configured': oauth_configured,
         'github_client_id': github_client_id,
-        'github_client_secret': github_client_secret
+        'github_client_secret': github_client_secret,
+        'github_app_slug': github_app_slug,
+        'base_template': base_template
     })
 
 
@@ -304,8 +323,13 @@ def create_deployment_view(request):
     domain_id = request.POST.get('domain_id')
     repo_url = request.POST.get('repo_url', '').strip()
     branch = request.POST.get('branch', 'main').strip() or 'main'
-    repo_type = request.POST.get('repo_type', 'public')
     auto_configure = request.POST.get('auto_configure') == 'true' or request.POST.get('auto_configure') == 'on'
+    
+    # Auto-detect repository type based on URL format
+    if repo_url.startswith('git@') or repo_url.startswith('ssh://') or 'git@' in repo_url:
+        repo_type = 'private'
+    else:
+        repo_type = 'public'
     
     if not domain_id or not repo_url:
         return JsonResponse({"status": "error", "message": "Domain and Repository URL are required"}, status=400)
@@ -959,6 +983,8 @@ def app_manifest_callback_view(request):
         credentials = res.json()
         client_id = credentials.get("client_id")
         client_secret = credentials.get("client_secret")
+        slug = credentials.get("slug", "")
+        app_id = credentials.get("id", "")
         
         if not client_id or not client_secret:
             return HttpResponse("GitHub App Manifest did not return Client ID or Client Secret.", status=400)
@@ -978,6 +1004,22 @@ def app_manifest_callback_view(request):
             else:
                 cursor.execute("INSERT INTO git_settings (setting_key, setting_value) VALUES ('github_client_secret', %s)", [client_secret])
                 
+            # Upsert github_app_slug
+            if slug:
+                cursor.execute("SELECT id FROM git_settings WHERE setting_key = 'github_app_slug'")
+                if cursor.fetchone():
+                    cursor.execute("UPDATE git_settings SET setting_value = %s WHERE setting_key = 'github_app_slug'", [slug])
+                else:
+                    cursor.execute("INSERT INTO git_settings (setting_key, setting_value) VALUES ('github_app_slug', %s)", [slug])
+
+            # Upsert github_app_id
+            if app_id:
+                cursor.execute("SELECT id FROM git_settings WHERE setting_key = 'github_app_id'")
+                if cursor.fetchone():
+                    cursor.execute("UPDATE git_settings SET setting_value = %s WHERE setting_key = 'github_app_id'", [str(app_id)])
+                else:
+                    cursor.execute("INSERT INTO git_settings (setting_key, setting_value) VALUES ('github_app_id', %s)", [str(app_id)])
+                
         # Redirect user to install the App and choose "All repositories"
         # The response contains html_url like https://github.com/apps/{slug}
         app_html_url = credentials.get("html_url", "")
@@ -987,3 +1029,24 @@ def app_manifest_callback_view(request):
         return redirect('/module/git_deploy/gui/?github_setup=success')
     except Exception as e:
         return HttpResponse(f"Error during app configuration: {str(e)}", status=500)
+
+
+@loginadminoruser
+def disconnect_github_view(request):
+    """Disconnects the GitHub App and deletes settings from database"""
+    user = get_authenticated_user(request)
+    is_admin = hasattr(request, 'admin_user') and request.admin_user
+    
+    if not (user.is_superuser or is_admin):
+        return JsonResponse({"status": "error", "message": "Permission denied (Admin required)"}, status=403)
+        
+    if request.method == 'POST':
+        with connection.cursor() as cursor:
+            # Delete credentials
+            cursor.execute("DELETE FROM git_settings WHERE setting_key IN ('github_client_id', 'github_client_secret', 'github_app_slug', 'github_app_id')")
+            # Also clean up all user tokens
+            cursor.execute("DELETE FROM git_user_tokens WHERE token_type = 'github'")
+            
+        return JsonResponse({"status": "success", "message": "GitHub App disconnected successfully"})
+        
+    return JsonResponse({"status": "error", "message": "Invalid request method"}, status=400)

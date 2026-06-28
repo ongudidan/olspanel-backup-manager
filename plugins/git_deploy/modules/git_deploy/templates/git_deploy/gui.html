@@ -1,4 +1,4 @@
-{% extends request.admin_user|yesno:"whm/base.html,users/base.html" %}
+{% extends base_template %}
 
 {% block title %}Git Auto-Deploy Settings{% endblock title %}
 
@@ -255,18 +255,11 @@
                     {% endif %}
                 </div>
 
-                <!-- Branch and Visibility Stacked -->
+                <!-- Branch Stacked -->
                 <div style="display: flex; flex-direction: column; gap: 16px;">
                     <div>
                         <label style="display: block; font-size: 0.88rem; font-weight: 600; color: #374151; margin-bottom: 8px;">Target Branch</label>
                         <input type="text" name="branch" value="main" placeholder="main" style="width: 100%; height: 44px; padding: 0 12px; border-radius: 4px; border: 1px solid #cbd5e1; outline: none; font-size: 0.9rem; color: #1e293b;">
-                    </div>
-                    <div id="repoTypeContainer" style="display: {% if has_github_token %}none{% else %}block{% endif %};">
-                        <label style="display: block; font-size: 0.88rem; font-weight: 600; color: #374151; margin-bottom: 8px;">Repository Type</label>
-                        <select name="repo_type" style="width: 100%; height: 44px; padding: 0 12px; border-radius: 4px; border: 1px solid #cbd5e1; outline: none; background: #fff; font-size: 0.9rem; color: #1e293b;">
-                            <option value="public">Public Repository</option>
-                            <option value="private">Private Repository</option>
-                        </select>
                     </div>
                 </div>
 
@@ -356,10 +349,32 @@
             <!-- Tab Content: Admin settings -->
             {% if request.admin_user or request.user.is_superuser %}
             <div id="githubModalAdminContent" style="display: none; padding: 24px; flex-direction: column; gap: 16px;">
-                <p style="margin: 0; font-size: 0.85rem; color: #64748b; line-height: 1.5;">
+                <p style="margin: 0; font-size: 0.85rem; color: #64748b; line-height: 1.5; text-align: left;">
                     Generate a GitHub App for this OLSPanel server automatically. This enables all users on this panel to securely link their repositories.
                 </p>
 
+                {% if oauth_configured %}
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 10px 12px; text-align: left;">
+                        <span>✓</span> <span>System GitHub App is currently active and configured.</span>
+                    </div>
+                    
+                    <button type="button" onclick="disconnectGithubApp()" style="width: 100%; display: flex; align-items: center; justify-content: center; background: #fff; border: 1px solid #fee2e2; color: #ef4444; padding: 12px; border-radius: 4px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#fef2f2';" onmouseout="this.style.background='#fff';">
+                        Disconnect GitHub App
+                    </button>
+
+                    <div style="font-size: 0.78rem; color: #64748b; line-height: 1.5; text-align: left; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px;">
+                        <strong style="color: #475569;">💡 How to delete the App on GitHub:</strong><br>
+                        Since this app is registered under your developer settings on GitHub, disconnecting it locally does not automatically delete it from GitHub. To delete it fully:
+                        <div style="margin-top: 8px;">
+                            <a href="{% if github_app_slug %}https://github.com/settings/apps/{{ github_app_slug }}{% else %}https://github.com/settings/apps{% endif %}" target="_blank" style="color: {{ branding.brand_color|default:'#ef6d19' }}; font-weight: 600; text-decoration: underline;">
+                                Open App Settings on GitHub →
+                            </a>
+                        </div>
+                        Scroll down to the bottom of the page and click <strong>"Delete GitHub App"</strong>.
+                    </div>
+                </div>
+                {% else %}
                 <!-- Frictionless Setup Form -->
                 <form action="https://github.com/settings/apps/new" method="post" style="margin: 0; width: 100%;">
                     <input type="hidden" name="manifest" id="githubManifestPayload">
@@ -373,11 +388,6 @@
                     <strong style="display: block; margin-bottom: 4px;">⚠️ Important Step:</strong>
                     During setup, GitHub will ask where to install the App. Make sure to choose <strong>"All repositories"</strong> to ensure your private repositories can be retrieved by the panel.
                 </div>
-                
-                {% if oauth_configured %}
-                <div style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 10px 12px;">
-                    <span>✓</span> <span>System GitHub App is currently active and configured.</span>
-                </div>
                 {% endif %}
             </div>
             {% endif %}
@@ -386,8 +396,8 @@
     </div>
 
     <!-- View Logs Drawer -->
-    <div id="logsDrawerModal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 2000; align-items: center; justify-content: flex-end;">
-        <div style="background: #fff; width: 100%; max-width: 650px; height: 100%; border-left: 1px solid #e2e8f0; box-shadow: -10px 0 25px -5px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; animation: drawerIn 0.3s ease;">
+    <div id="logsDrawerModal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 2000; align-items: stretch; justify-content: flex-end;">
+        <div style="background: #fff; width: 100%; max-width: 650px; height: 100vh; max-height: 100vh; border-left: 1px solid #e2e8f0; box-shadow: -10px 0 25px -5px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; animation: drawerIn 0.3s ease;">
             
             <div style="padding: 20px 24px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #f8fafc;">
                 <div>
@@ -420,10 +430,16 @@
     border-radius: 4px;
     overflow: hidden;
     background: #fff;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+.log-accordion:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.03);
 }
 .log-header {
-    padding: 14px 16px;
-    background: #f8fafc;
+    padding: 10px 14px;
+    background: #fff;
     cursor: pointer;
     display: flex;
     justify-content: space-between;
@@ -433,18 +449,23 @@
     transition: all 0.2s;
 }
 .log-header:hover {
-    background: #f1f5f9;
+    background: #f8fafc;
 }
 .log-body {
     padding: 16px;
     background: #0f172a;
-    color: #38bdf8;
+    color: #f8fafc;
     font-family: 'Fira Code', 'Courier New', monospace;
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     white-space: pre-wrap;
     display: none;
-    border-top: 1px solid #1e293b;
+    border-top: 1px solid #e2e8f0;
     box-sizing: border-box;
+}
+@keyframes pulse {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.4); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(217, 119, 6, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); }
 }
 </style>
 
@@ -600,7 +621,7 @@ window.logPollingInterval = null;
 function triggerManualDeploy(depId, button) {
     const originalText = button.innerHTML;
     button.disabled = true;
-    button.innerHTML = "⏳ Dispatching...";
+    button.innerHTML = "Dispatching...";
     
     // Update main page status badge to pending immediately
     updateMainPageStatus(depId, 'pending');
@@ -609,7 +630,7 @@ function triggerManualDeploy(depId, button) {
     .then(res => res.json())
     .then(data => {
         if(data.status === "success") {
-            button.innerHTML = "✅ Triggered!";
+            button.innerHTML = "Triggered!";
             setTimeout(() => {
                 // Open logs drawer and focus on this new log_id
                 openLogsModal(depId, data.log_id);
@@ -649,6 +670,16 @@ function confirmDelete(depId) {
     }
 }
 
+function getStatusDotHtml(status) {
+    if (status === 'success') {
+        return '<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #16a34a; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);"></span>';
+    } else if (status === 'failed') {
+        return '<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #dc2626; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);"></span>';
+    } else {
+        return '<span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #d97706; animation: pulse 1.5s infinite;"></span>';
+    }
+}
+
 function getStatusBadgeHtml(status) {
     if (status === 'success') {
         return '<span style="color:#16a34a; font-weight:600; font-size:0.75rem;">SUCCESS</span>';
@@ -666,16 +697,31 @@ function createLogAccordionElement(log) {
     logItem.id = `logRun_${log.id}`;
     
     logItem.innerHTML = `
-        <div class="log-header" onclick="toggleLogBody(this)" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #f8fafc; border-bottom: 1px solid transparent; transition: all 0.2s;">
-            <div>
-                <span style="font-weight:600; font-size:0.88rem; color:#1e293b;">${log.commit_message || 'Manual Deployment'}</span>
-                <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;">
-                    Author: ${log.commit_author || '-'} • Hash: ${log.commit_hash ? log.commit_hash.substring(0,7) : '-'} • ${date}
+        <div class="log-header" onclick="toggleLogBody(this)" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #fff; transition: all 0.2s;">
+            <div style="display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1;">
+                <div style="flex-shrink: 0; display: flex; align-items: center;">
+                    ${getStatusDotHtml(log.status)}
+                </div>
+                <div style="min-width: 0; flex: 1;">
+                    <div style="font-weight: 600; font-size: 0.82rem; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;">
+                        ${log.commit_message || 'Manual Deployment'}
+                    </div>
+                    <div style="font-size: 0.72rem; color: #64748b; margin-top: 2px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <span>${date}</span>
+                        <span>•</span>
+                        <code style="font-size: 0.7rem; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; color: #475569;">
+                            ${log.commit_hash ? log.commit_hash.substring(0, 7) : 'no hash'}
+                        </code>
+                        <span>•</span>
+                        <span style="color: #475569;">by ${log.commit_author || 'user'}</span>
+                    </div>
                 </div>
             </div>
-            <div style="display:flex; align-items:center; gap:10px;">
-                <div class="log-status-badge-container">${getStatusBadgeHtml(log.status)}</div>
-                <span class="log-arrow" style="font-size:0.7rem; color:#94a3b8;">▼</span>
+            <div style="display: flex; align-items: center; gap: 12px; margin-left: 12px; flex-shrink: 0;">
+                <span style="font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: ${log.status === 'success' ? '#16a34a' : log.status === 'failed' ? '#dc2626' : '#d97706'}">
+                    ${log.status}
+                </span>
+                <span class="log-arrow" style="font-size: 0.75rem; color: #94a3b8; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #f1f5f9; transition: all 0.2s;">▼</span>
             </div>
         </div>
         <div class="log-body" style="display: none; padding: 16px; background: #0f172a; color: #f8fafc; font-family: monospace; font-size: 0.82rem; white-space: pre-wrap; word-break: break-all; border-top: 1px solid #e2e8f0; box-sizing: border-box;">${escapeHtml(log.log_output || 'No log details available.')}</div>
@@ -725,12 +771,12 @@ function streamLogOutput(logId, logBodyElement, depId, deployBtn) {
         window.activeLogStreamReader = null;
     }
 
-    logBodyElement.textContent = "🚀 Connecting to live log stream...\n";
+    logBodyElement.textContent = "Connecting to live log stream...\n";
 
     fetch(`/module/git_deploy/deploy/stream/${logId}/`)
     .then(async res => {
         if (!res.ok) {
-            logBodyElement.textContent += "\n❌ Error connecting to log stream.";
+            logBodyElement.textContent += "\nError connecting to log stream.";
             return;
         }
 
@@ -753,21 +799,21 @@ function streamLogOutput(logId, logBodyElement, depId, deployBtn) {
                 }
             }
         } catch (err) {
-            logBodyElement.textContent += "\n\n❌ Stream interrupted: " + err;
+            logBodyElement.textContent += "\n\nStream interrupted: " + err;
         } finally {
             window.activeLogStreamReader = null;
             if (deployBtn) {
                 deployBtn.disabled = false;
-                deployBtn.innerHTML = "🚀 Deploy Now";
+                deployBtn.innerHTML = "Deploy Now";
             }
             refreshLogsList(depId);
         }
     })
     .catch(err => {
-        logBodyElement.textContent += "\n❌ Connection error: " + err;
+        logBodyElement.textContent += "\nConnection error: " + err;
         if (deployBtn) {
             deployBtn.disabled = false;
-            deployBtn.innerHTML = "🚀 Deploy Now";
+            deployBtn.innerHTML = "Deploy Now";
         }
     });
 }
@@ -844,7 +890,7 @@ function openLogsModal(depId, activeLogId = null) {
                     if (log.status === 'pending') {
                         if (deployBtn) {
                             deployBtn.disabled = true;
-                            deployBtn.innerHTML = "⏳ Deploying...";
+                            deployBtn.innerHTML = "Deploying...";
                         }
                         streamLogOutput(log.id, body, depId, deployBtn);
                     }
@@ -923,6 +969,33 @@ function submitTokenForm(action) {
     .catch(err => {
         alert("Server error managing GitHub token.");
     });
+}
+
+function disconnectGithubApp() {
+    if (confirm("Are you sure you want to disconnect the GitHub App from this server? This will clear all GitHub App settings and linked user profile tokens.")) {
+        const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]').value;
+        fetch("{% url 'git_deploy_settings_disconnect' %}", {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": csrfToken
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === "success") {
+                alert("GitHub App disconnected locally. We will now open your GitHub App Developer Settings so you can delete the App from GitHub too.");
+                const appSlug = "{{ github_app_slug }}";
+                const githubUrl = appSlug ? `https://github.com/settings/apps/${appSlug}` : "https://github.com/settings/apps";
+                window.open(githubUrl, '_blank');
+                location.reload();
+            } else {
+                alert("Error: " + data.message);
+            }
+        })
+        .catch(err => {
+            alert("Server error disconnecting GitHub App.");
+        });
+    }
 }
 
 function switchRepoTab(tab) {
@@ -1056,12 +1129,6 @@ function selectGithubRepo(repo) {
     const branchInput = document.querySelector('input[name="branch"]');
     if (branchInput) {
         branchInput.value = repo.branch || 'main';
-    }
-    
-    // Set repo type selection
-    const typeSelect = document.querySelector('select[name="repo_type"]');
-    if (typeSelect) {
-        typeSelect.value = repo.private ? 'private' : 'public';
     }
     
     // Close dropdown

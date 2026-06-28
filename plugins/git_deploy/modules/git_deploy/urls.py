@@ -12,6 +12,7 @@ urlpatterns = [
     path('token/', views.manage_token_view, name='git_deploy_token'),
     path('repos/', views.fetch_github_repos_view, name='git_deploy_repos'),
     path('settings/', views.manage_settings_view, name='git_deploy_settings'),
+    path('settings/disconnect/', views.disconnect_github_view, name='git_deploy_settings_disconnect'),
     path('oauth/redirect/', views.oauth_redirect_view, name='git_deploy_oauth_redirect'),
     path('oauth/callback/', views.oauth_callback_view, name='git_deploy_oauth_callback'),
     path('app/callback/', views.app_manifest_callback_view, name='git_deploy_app_callback'),
