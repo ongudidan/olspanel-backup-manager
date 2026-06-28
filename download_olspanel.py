@@ -62,6 +62,8 @@ OLSPANEL_STATIC_FILES = [
     ("https://olspanel.com/plugin/phpmyadmin.zip", "plugin/phpmyadmin.zip"),
     ("https://olspanel.com/plugin/ufw.zip", "plugin/ufw.zip"),
     ("https://olspanel.com/plugin/config_ufw.zip", "plugin/config_ufw.zip"),
+    ("https://olspanel.com/plugin/terminal.zip", "plugin/terminal.zip"),
+    ("https://olspanel.com/plugin/terminal_module.zip", "plugin/terminal_module.zip"),
     
     # CentOS Repository configurations
     ("https://olspanel.com/repo-files/centos-auth-43.repo", "repo-files/centos-auth-43.repo"),
@@ -345,6 +347,16 @@ GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';'''
 
     echo "Importing database from '$DUMP_FILE' into '$DB_NAME'..."'''
             content = content.replace(target4, replacement4)
+            
+        # 5. Patch install_cp_plugin to resolve relative paths
+        if os.path.basename(filepath) == 'install_cp_plugin':
+            target5 = 'PLUGIN_FILE="$1"'
+            replacement5 = r'''PLUGIN_FILE="$1"
+# Resolve relative paths to absolute paths before we change directories
+if [[ ! "$PLUGIN_FILE" =~ ^https?:// ]] && [[ ! "$PLUGIN_FILE" =~ ^/ ]]; then
+    PLUGIN_FILE="$(pwd)/$PLUGIN_FILE"
+fi'''
+            content = content.replace(target5, replacement5)
         
         if content != original_content:
             with open(filepath, 'w', encoding='utf-8') as f:
@@ -429,6 +441,29 @@ def main():
         local_file_path = os.path.join(dest_path, relative_path)
         print(f"({idx}/{len(OLSPANEL_STATIC_FILES)}) {relative_path}")
         
+        # Check if we have a local version of this file in plugins/ to copy instead of downloading
+        local_override_path = None
+        if relative_path == "plugin/terminal.zip":
+            local_override_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugins", "terminal.zip")
+        elif relative_path == "plugin/terminal_module.zip":
+            local_override_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugins", "terminal_module.zip")
+
+        if local_override_path and os.path.exists(local_override_path):
+            print(f"  ✓ Found local override for {relative_path}. Copying from local plugins...")
+            if args.dry_run:
+                print(f"  [Dry-run] Would copy local {local_override_path} to {local_file_path}")
+                static_success += 1
+                continue
+            
+            dir_name = os.path.dirname(local_file_path)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
+            import shutil
+            shutil.copy2(local_override_path, local_file_path)
+            static_success += 1
+            print("  ✓ Copied successfully.")
+            continue
+
         if args.dry_run:
             print(f"  [Dry-run] Would download from {url}")
             static_success += 1
@@ -531,6 +566,12 @@ fi
 echo "2. Executing patched OLSPanel installer..."
 chmod +x install.sh
 ./install.sh
+
+# Automatically install custom terminal plugin if available
+if [ -f "/usr/local/bin/install_cp_plugin" ] && [ -f "$SCRIPT_DIR/plugin/terminal.zip" ]; then
+    echo "3. Automatically installing OLSPanel Terminal Plugin..."
+    /usr/local/bin/install_cp_plugin "$SCRIPT_DIR/plugin/terminal.zip"
+fi
 
 echo "=================================================="
 echo "🎉 Automated installer script finished!"
