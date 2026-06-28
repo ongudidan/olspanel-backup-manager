@@ -525,7 +525,7 @@ wait_for_apt_lock() {
 }'''
                 content = content.replace(target_top_sh, replacement_top_sh)
             
-        # 5. Patch install_cp_plugin to resolve relative paths
+        # 5. Patch install_cp_plugin to resolve relative paths and automatically heal from stale folders
         if os.path.basename(filepath) == 'install_cp_plugin':
             target5 = 'PLUGIN_FILE="$1"'
             replacement5 = r'''PLUGIN_FILE="$1"
@@ -534,6 +534,18 @@ if [[ ! "$PLUGIN_FILE" =~ ^https?:// ]] && [[ ! "$PLUGIN_FILE" =~ ^/ ]]; then
     PLUGIN_FILE="$(pwd)/$PLUGIN_FILE"
 fi'''
             content = content.replace(target5, replacement5)
+
+            target6 = r'''cd "$PROJECT_DIR" || { echo "❌ Could not find project directory: $PROJECT_DIR"; exit 1; }'''
+            replacement6 = r'''cd "$PROJECT_DIR" || { echo "❌ Could not find project directory: $PROJECT_DIR"; exit 1; }
+
+# Clean up any stale extraction directory in /home/tmp/ if present to heal from previous failed runs
+FILENAME=$(basename "$PLUGIN_FILE")
+PLUGIN_NAME="${FILENAME%.*}"
+if [ -n "$PLUGIN_NAME" ] && [ -d "/home/tmp/$PLUGIN_NAME" ]; then
+    echo "🧹 Cleaning up stale extraction directory: /home/tmp/$PLUGIN_NAME"
+    rm -rf "/home/tmp/$PLUGIN_NAME"
+fi'''
+            content = content.replace(target6, replacement6)
         
         if content != original_content:
             with open(filepath, 'w', encoding='utf-8') as f:
