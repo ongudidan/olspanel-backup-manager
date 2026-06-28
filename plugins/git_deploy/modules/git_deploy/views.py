@@ -52,13 +52,25 @@ def run_cmd_as_user(username, cmd, cwd, env_vars=None):
     )
     return res.returncode, res.stdout, res.stderr
 
-def deploy_worker(deployment_id, commit_info=None):
+def create_pending_log(dep_id, commit_info=None):
+    commit_hash = commit_info.get('hash') if commit_info else None
+    commit_msg = commit_info.get('message') if commit_info else 'Manual Deployment'
+    commit_author = commit_info.get('author') if commit_info else 'Dashboard User'
+    
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO git_deployment_logs (deployment_id, commit_hash, commit_message, commit_author, status, log_output, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, [dep_id, commit_hash, commit_msg, commit_author, 'pending', 'Starting deployment...\n', datetime.now()])
+        return cursor.lastrowid
+
+def deploy_worker(deployment_id, log_id, commit_info=None):
     """Threaded worker that handles checkout, pull, and package management steps"""
     
     # 1. Fetch deployment configuration
     with connection.cursor() as cursor:
         cursor.execute("""
-            SELECT d.id, d.repo_url, d.branch, d.deploy_path, d.ssh_key, u.username, d.domain_id
+            SELECT d.id, d.repo_url, d.branch, d.deploy_path, d.ssh_key, u.username, d.domain_id, d.auto_configured
             FROM git_deployments d
             JOIN domain dm ON d.domain_id = dm.id
             JOIN auth_user u ON dm.userid = u.id
@@ -69,7 +81,7 @@ def deploy_worker(deployment_id, commit_info=None):
     if not row:
         return
         
-    dep_id, repo_url, branch, deploy_path, ssh_key, username, domain_id = row
+    dep_id, repo_url, branch, deploy_path, ssh_key, username, domain_id, auto_configured = row
     
     # Initialize state
     status = 'success'
@@ -77,6 +89,13 @@ def deploy_worker(deployment_id, commit_info=None):
     
     def log(message):
         log_lines.append(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
+        log_text = "\n".join(log_lines)
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE git_deployment_logs
+                SET log_output = %s
+                WHERE id = %s
+            """, [log_text, log_id])
         
     log(f"Starting deployment for repository: {repo_url} (Branch: {branch})")
     
@@ -155,40 +174,8 @@ def deploy_worker(deployment_id, commit_info=None):
             else:
                 log("Submodules updated successfully.")
 
-        # Post-deployment: Install Composer dependencies if composer.json exists
-        if status == 'success' and os.path.exists(os.path.join(deploy_path, 'composer.json')):
-            log("Composer configuration found. Installing dependencies...")
-            code, out, err = run_cmd_as_user(username, ['composer', 'install', '--no-dev', '--optimize-autoloader', '--no-interaction'], deploy_path)
-            if code != 0:
-                status = 'failed'
-                log(f"FAILED: Composer Install\nSTDOUT:\n{out}\nSTDERR:\n{err}")
-            else:
-                log("Composer dependencies installed successfully.")
-
-        # Post-deployment: Install NPM dependencies and run build if package.json exists
-        if status == 'success' and os.path.exists(os.path.join(deploy_path, 'package.json')):
-            log("NPM configuration found. Installing package dependencies...")
-            code, out, err = run_cmd_as_user(username, ['npm', 'install'], deploy_path)
-            if code != 0:
-                log(f"NPM Install warning/fail:\nSTDOUT:\n{out}\nSTDERR:\n{err}")
-            else:
-                log("NPM packages installed.")
-                # Run build script if present in package.json
-                with open(os.path.join(deploy_path, 'package.json'), 'r') as pkg_f:
-                    pkg_data = json.load(pkg_f)
-                if 'build' in pkg_data.get('scripts', {}):
-                    log("Running NPM build script...")
-                    code, out, err = run_cmd_as_user(username, ['npm', 'run', 'build'], deploy_path)
-                    if code != 0:
-                        log(f"NPM Build warning/fail:\nSTDOUT:\n{out}\nSTDERR:\n{err}")
-                    else:
-                        log("NPM build completed successfully.")
-
-        # Post-deployment: Laravel migrations
-        if status == 'success' and os.path.exists(os.path.join(deploy_path, 'artisan')):
-            log("Laravel Artisan detected. Running database migrations...")
-            code, out, err = run_cmd_as_user(username, ['php', 'artisan', 'migrate', '--force'], deploy_path)
-            log(f"Artisan Migrate output:\nSTDOUT:\n{out}\nSTDERR:\n{err}")
+        # Skip composer, npm, and artisan steps since all required files are already present in the repository.
+        pass
 
     except Exception as ex:
         status = 'failed'
@@ -199,18 +186,14 @@ def deploy_worker(deployment_id, commit_info=None):
         
     log(f"Deployment complete. Status: {status.upper()}")
     
-    # Save the log entry to the database
+    # Save final status and output to the database
     log_text = "\n".join(log_lines)
-    
-    commit_hash = commit_info.get('hash') if commit_info else None
-    commit_msg = commit_info.get('message') if commit_info else 'Manual Deployment'
-    commit_author = commit_info.get('author') if commit_info else 'Dashboard User'
-    
     with connection.cursor() as cursor:
         cursor.execute("""
-            INSERT INTO git_deployment_logs (deployment_id, commit_hash, commit_message, commit_author, status, log_output, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, [dep_id, commit_hash, commit_msg, commit_author, status, log_text, datetime.now()])
+            UPDATE git_deployment_logs
+            SET status = %s, log_output = %s
+            WHERE id = %s
+        """, [status, log_text, log_id])
 
 
 @loginadminoruser
@@ -229,13 +212,13 @@ def gui_view(request):
     with connection.cursor() as cursor:
         if user.is_superuser or is_admin:
             cursor.execute("""
-                SELECT gd.id, d.domain, gd.repo_url, gd.branch, gd.deploy_path, gd.webhook_secret, gd.ssh_public_key, gd.created_at
+                SELECT gd.id, d.domain, gd.repo_url, gd.branch, gd.deploy_path, gd.webhook_secret, gd.ssh_public_key, gd.auto_configured, gd.created_at
                 FROM git_deployments gd
                 JOIN domain d ON gd.domain_id = d.id
             """)
         else:
             cursor.execute("""
-                SELECT gd.id, d.domain, gd.repo_url, gd.branch, gd.deploy_path, gd.webhook_secret, gd.ssh_public_key, gd.created_at
+                SELECT gd.id, d.domain, gd.repo_url, gd.branch, gd.deploy_path, gd.webhook_secret, gd.ssh_public_key, gd.auto_configured, gd.created_at
                 FROM git_deployments gd
                 JOIN domain d ON gd.domain_id = d.id
                 WHERE gd.userid_id = %s
@@ -418,9 +401,9 @@ def create_deployment_view(request):
     # Save details to MySQL
     with connection.cursor() as cursor:
         cursor.execute("""
-            INSERT INTO git_deployments (userid_id, domain_id, repo_url, branch, deploy_path, webhook_secret, ssh_key, ssh_public_key, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, [user.id, domain.id, repo_url, branch, domain.path, webhook_secret, ssh_key, ssh_public_key, datetime.now()])
+            INSERT INTO git_deployments (userid_id, domain_id, repo_url, branch, deploy_path, webhook_secret, ssh_key, ssh_public_key, auto_configured, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, [user.id, domain.id, repo_url, branch, domain.path, webhook_secret, ssh_key, ssh_public_key, 1 if auto_configure else 0, datetime.now()])
 
     return JsonResponse({"status": "success", "message": "Deployment registered successfully"})
 
@@ -497,11 +480,78 @@ def fetch_github_repos_view(request):
     }
     
     try:
-        res = requests.get("https://api.github.com/user/repos?per_page=100&sort=updated", headers=headers, timeout=15)
-        if res.status_code != 200:
-            return JsonResponse({"status": "error", "message": "Failed to fetch repositories from GitHub"}, status=res.status_code)
-            
-        repos_data = res.json()
+        # Detect token type: GitHub App user tokens start with ghu_, fine-grained PAT with github_pat_
+        token_prefix = token[:4] if len(token) >= 4 else token
+        is_github_app_token = token_prefix in ("ghu_", "ghs_")
+
+        repos_data = []
+
+        if is_github_app_token:
+            # GitHub App user tokens: /user/repos only shows repos where app is INSTALLED.
+            # Also fetch repos via /user/installations to cover all installations.
+            # Step 1: collect repos from /user/repos (visibility=all)
+            page = 1
+            while True:
+                res = requests.get(
+                    f"https://api.github.com/user/repos?per_page=100&sort=updated&visibility=all&page={page}",
+                    headers=headers, timeout=15
+                )
+                if res.status_code != 200:
+                    break
+                page_data = res.json()
+                if not page_data:
+                    break
+                repos_data.extend(page_data)
+                if len(page_data) < 100:
+                    break
+                page += 1
+
+            # Step 2: Fetch all App installations for this user, then get their repos
+            inst_res = requests.get(
+                "https://api.github.com/user/installations?per_page=100",
+                headers=headers, timeout=15
+            )
+            if inst_res.status_code == 200:
+                installations = inst_res.json().get("installations", [])
+                existing_names = {r["full_name"] for r in repos_data}
+                for inst in installations:
+                    inst_id = inst.get("id")
+                    ir_page = 1
+                    while True:
+                        ir = requests.get(
+                            f"https://api.github.com/user/installations/{inst_id}/repositories?per_page=100&page={ir_page}",
+                            headers=headers, timeout=15
+                        )
+                        if ir.status_code != 200:
+                            break
+                        ir_data = ir.json().get("repositories", [])
+                        if not ir_data:
+                            break
+                        for r in ir_data:
+                            if r.get("full_name") not in existing_names:
+                                repos_data.append(r)
+                                existing_names.add(r["full_name"])
+                        if len(ir_data) < 100:
+                            break
+                        ir_page += 1
+        else:
+            # Traditional OAuth App token or PAT - /user/repos with visibility=all works normally
+            page = 1
+            while True:
+                res = requests.get(
+                    f"https://api.github.com/user/repos?per_page=100&sort=updated&visibility=all&page={page}",
+                    headers=headers, timeout=15
+                )
+                if res.status_code != 200:
+                    return JsonResponse({"status": "error", "message": "Failed to fetch repositories from GitHub"}, status=res.status_code)
+                page_data = res.json()
+                if not page_data:
+                    break
+                repos_data.extend(page_data)
+                if len(page_data) < 100:
+                    break
+                page += 1
+
         repos = []
         for r in repos_data:
             repos.append({
@@ -512,7 +562,9 @@ def fetch_github_repos_view(request):
                 "private": r.get("private", False),
                 "branch": r.get("default_branch", "main")
             })
-        return JsonResponse({"status": "success", "repos": repos})
+        # Sort: private first, then alphabetical
+        repos.sort(key=lambda x: (not x["private"], x["full_name"].lower()))
+        return JsonResponse({"status": "success", "repos": repos, "token_type": token_prefix})
     except Exception as e:
         return JsonResponse({"status": "error", "message": f"GitHub connection error: {str(e)}"}, status=500)
 
@@ -583,9 +635,16 @@ def trigger_manual_deploy_view(request, dep_id):
         if not cursor.fetchone():
             return JsonResponse({"status": "error", "message": "Deployment config not found"}, status=404)
             
+    # Create a pending log entry
+    log_id = create_pending_log(dep_id)
+    
     # Trigger background thread worker
-    Thread(target=deploy_worker, args=(dep_id,)).start()
-    return JsonResponse({"status": "success", "message": "Deployment triggered in background"})
+    Thread(target=deploy_worker, args=(dep_id, log_id)).start()
+    return JsonResponse({
+        "status": "success", 
+        "message": "Deployment triggered in background",
+        "log_id": log_id
+    })
 
 
 @csrf_exempt
@@ -660,7 +719,8 @@ def webhook_view(request):
     
     # Trigger deployments in background
     for dep_id in matching_deploys:
-        Thread(target=deploy_worker, args=(dep_id, commit_info)).start()
+        log_id = create_pending_log(dep_id, commit_info)
+        Thread(target=deploy_worker, args=(dep_id, log_id, commit_info)).start()
         
     return HttpResponse(f"Autodeployment triggered for {len(matching_deploys)} configurations.", status=200)
 
@@ -801,7 +861,7 @@ def oauth_callback_view(request):
             if cursor.fetchone():
                 cursor.execute("UPDATE git_user_tokens SET token_value = %s, created_at = %s WHERE userid_id = %s AND token_type = 'github'", [access_token, datetime.now(), user.id])
             else:
-                cursor.execute("INSERT INTO git_user_tokens (userid_id, token_type, token_value, created_at) VALUES (%s, 'github', %s, %s)", [user.id, 'github', access_token, datetime.now()])
+                cursor.execute("INSERT INTO git_user_tokens (userid_id, token_type, token_value, created_at) VALUES (%s, %s, %s, %s)", [user.id, 'github', access_token, datetime.now()])
                 
         return redirect('/module/git_deploy/gui/?github_oauth=success')
     except Exception as e:
@@ -853,6 +913,12 @@ def app_manifest_callback_view(request):
             else:
                 cursor.execute("INSERT INTO git_settings (setting_key, setting_value) VALUES ('github_client_secret', %s)", [client_secret])
                 
+        # Redirect user to install the App and choose "All repositories"
+        # The response contains html_url like https://github.com/apps/{slug}
+        app_html_url = credentials.get("html_url", "")
+        if app_html_url:
+            install_url = f"{app_html_url}/installations/new"
+            return redirect(install_url)
         return redirect('/module/git_deploy/gui/?github_setup=success')
     except Exception as e:
         return HttpResponse(f"Error during app configuration: {str(e)}", status=500)

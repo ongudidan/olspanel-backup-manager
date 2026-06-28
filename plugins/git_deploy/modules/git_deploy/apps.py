@@ -62,5 +62,10 @@ class GitDeployConfig(AppConfig):
                         setting_value TEXT NOT NULL
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                 """)
+                # 5. Add auto_configured column if not exists (migration)
+                try:
+                    cursor.execute("ALTER TABLE git_deployments ADD COLUMN auto_configured TINYINT(1) NOT NULL DEFAULT 0")
+                except Exception:
+                    pass  # Column already exists
         except Exception as e:
             print(f"[GitDeploy] Database initialization warning: {e}")
