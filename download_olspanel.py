@@ -348,6 +348,109 @@ GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';'''
 
     echo "Importing database from '$DUMP_FILE' into '$DB_NAME'..."'''
             content = content.replace(target4, replacement4)
+
+            # Patch unzip_and_move to safely copy locally and avoid loopback download/nesting errors
+            if os.path.basename(filepath) in ('panel.sh', 'panel_22.sh', 'xpanel.sh'):
+                target_unzip = r'''unzip_and_move() {
+
+    wget -O /root/item/panel_setup.zip "http://127.0.0.1:8000/panel_setup.zip"
+    local zip_file="/root/item/panel_setup.zip"
+    local extract_dir="/root/item/cp"
+    local target_dir="/usr/local/olspanel"
+
+    # Ensure the zip file exists
+    if [ ! -f "$zip_file" ]; then
+        echo "Zip file '$zip_file' does not exist. Exiting."
+        return 1
+    fi
+
+    # Ensure the target directory exists, create it if it doesn't
+    if [ ! -d "$target_dir" ]; then
+        echo "Target directory '$target_dir' does not exist. Creating it."
+        mkdir -p "$target_dir"
+    fi
+
+    # Create the extraction directory if it doesn't exist
+    if [ ! -d "$extract_dir" ]; then
+        echo "Creating extraction directory: $extract_dir"
+        mkdir -p "$extract_dir"
+    fi
+
+    # Unzip the file into the extraction directory
+    echo "Unzipping '$zip_file' to '$extract_dir'..."
+    unzip -o "$zip_file" -d "$extract_dir"
+    if [ $? -ne 0 ]; then
+        echo "Failed to unzip '$zip_file'. Exiting."
+        return 1
+    fi
+
+    # Move all extracted files to the target directory
+    echo "Moving contents of '$extract_dir' to '$target_dir'..."
+    mv "$extract_dir"/* "$target_dir"
+
+    echo "Unzipping and moving completed successfully."
+}'''
+
+                replacement_unzip = r'''unzip_and_move() {
+    local zip_file="/root/item/panel_setup.zip"
+    local extract_dir="/root/item/cp"
+    local target_dir="/usr/local/olspanel"
+
+    mkdir -p /root/item
+
+    # Prefer local copy if available to prevent loopback download failures
+    if [ -f "./panel_setup.zip" ]; then
+        echo "✓ Found local panel_setup.zip, copying directly..."
+        cp "./panel_setup.zip" "$zip_file"
+    elif [ -f "../panel_setup.zip" ]; then
+        echo "✓ Found local panel_setup.zip in parent directory, copying directly..."
+        cp "../panel_setup.zip" "$zip_file"
+    else
+        echo "📡 Downloading panel_setup.zip from local webserver..."
+        wget -O "$zip_file" "http://127.0.0.1:8000/panel_setup.zip"
+    fi
+
+    # Ensure the zip file exists
+    if [ ! -f "$zip_file" ]; then
+        echo "❌ Error: Zip file '$zip_file' does not exist."
+        return 1
+    fi
+
+    # Ensure the target directory exists, create it if it doesn't
+    mkdir -p "$target_dir"
+
+    # Create the extraction directory if it doesn't exist
+    mkdir -p "$extract_dir"
+
+    # Unzip the file into the extraction directory
+    echo "Unzipping '$zip_file' to '$extract_dir'..."
+    unzip -o "$zip_file" -d "$extract_dir"
+    if [ $? -ne 0 ]; then
+        echo "❌ Error: Failed to unzip '$zip_file'."
+        return 1
+    fi
+
+    # Move all extracted files to the target directory merging folders safely
+    echo "Moving contents of '$extract_dir' to '$target_dir'..."
+    cp -r "$extract_dir"/* "$target_dir"/
+    rm -rf "$extract_dir"
+
+    echo "Unzipping and moving completed successfully."
+}'''
+                content = content.replace(target_unzip, replacement_unzip)
+
+                # Ensure exit on error if unzip_and_move fails
+                target_call = r'''remove_files_in_html_folder
+unzip_and_move
+setup_cp_service_with_port'''
+                replacement_call = r'''remove_files_in_html_folder
+unzip_and_move
+if [ $? -ne 0 ]; then
+    echo "❌ Error: unzip_and_move failed! Core panel files were not extracted. Aborting install."
+    exit 1
+fi
+setup_cp_service_with_port'''
+                content = content.replace(target_call, replacement_call)
             
         # 5. Patch install_cp_plugin to resolve relative paths
         if os.path.basename(filepath) == 'install_cp_plugin':
