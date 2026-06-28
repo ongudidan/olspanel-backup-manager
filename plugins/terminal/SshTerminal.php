@@ -81,18 +81,26 @@ class SshTerminal implements MessageComponentInterface {
         $this->ssh_connections[$conn->resourceId]['shell_stream'] = $shell;
 
         // ===== AUTO ROOT SWITCH =====
-        usleep(200000);
-        fwrite($shell, "sudo -i\n");
+        if ($user === 'olsadmin') {
+            usleep(200000);
+            fwrite($shell, "sudo -i\n");
 
-        // ===== CLEAR TERMINAL =====
-        usleep(200000);
-        fwrite($shell, "clear\n");
+            // ===== CLEAR TERMINAL =====
+            usleep(200000);
+            fwrite($shell, "clear\n");
 
-        // ===== NOTIFY CLIENT =====
-        $conn->send(json_encode([
-            'type' => 'info',
-            'data' => "Connected as root@$host"
-        ]));
+            // ===== NOTIFY CLIENT =====
+            $conn->send(json_encode([
+                'type' => 'info',
+                'data' => "Connected as root@$host"
+            ]));
+        } else {
+            // ===== NOTIFY CLIENT =====
+            $conn->send(json_encode([
+                'type' => 'info',
+                'data' => "Connected as $user@$host"
+            ]));
+        }
 
         $this->startStreamReading($conn);
 
