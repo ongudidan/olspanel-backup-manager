@@ -64,6 +64,7 @@ OLSPANEL_STATIC_FILES = [
     ("https://olspanel.com/plugin/config_ufw.zip", "plugin/config_ufw.zip"),
     ("https://olspanel.com/plugin/terminal.zip", "plugin/terminal.zip"),
     ("https://olspanel.com/plugin/terminal_module.zip", "plugin/terminal_module.zip"),
+    ("https://olspanel.com/plugin/git_deploy.zip", "plugin/git_deploy.zip"),
     
     # CentOS Repository configurations
     ("https://olspanel.com/repo-files/centos-auth-43.repo", "repo-files/centos-auth-43.repo"),
@@ -447,6 +448,8 @@ def main():
             local_override_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugins", "terminal.zip")
         elif relative_path == "plugin/terminal_module.zip":
             local_override_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugins", "terminal_module.zip")
+        elif relative_path == "plugin/git_deploy.zip":
+            local_override_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugins", "git_deploy.zip")
 
         if local_override_path and os.path.exists(local_override_path):
             print(f"  ✓ Found local override for {relative_path}. Copying from local plugins...")
@@ -571,6 +574,12 @@ chmod +x install.sh
 if [ -f "/usr/local/bin/install_cp_plugin" ] && [ -f "$SCRIPT_DIR/plugin/terminal.zip" ]; then
     echo "3. Automatically installing OLSPanel Terminal Plugin..."
     /usr/local/bin/install_cp_plugin "$SCRIPT_DIR/plugin/terminal.zip"
+fi
+
+# Automatically install custom git deploy plugin if available
+if [ -f "/usr/local/bin/install_cp_plugin" ] && [ -f "$SCRIPT_DIR/plugin/git_deploy.zip" ]; then
+    echo "4. Automatically installing OLSPanel Git Deploy Plugin..."
+    /usr/local/bin/install_cp_plugin "$SCRIPT_DIR/plugin/git_deploy.zip"
 fi
 
 echo "=================================================="
