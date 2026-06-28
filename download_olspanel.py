@@ -470,6 +470,60 @@ fi
 
 display_success_message'''
                 content = content.replace(target_msg, replacement_msg)
+
+                # Replace iptables -A with iptables -I 1 to prevent Oracle Cloud / GCP lockups before reboot
+                content = content.replace('sudo iptables -A INPUT -p tcp --dport "$port" -j ACCEPT', 'sudo iptables -I INPUT 1 -p tcp --dport "$port" -j ACCEPT')
+                content = content.replace('sudo iptables -A OUTPUT -p tcp --dport "$port" -j ACCEPT', 'sudo iptables -I OUTPUT 1 -p tcp --dport "$port" -j ACCEPT')
+                content = content.replace('sudo iptables -A INPUT -p tcp --dport 40110:40210 -j ACCEPT', 'sudo iptables -I INPUT 1 -p tcp --dport 40110:40210 -j ACCEPT')
+                content = content.replace('sudo iptables -A OUTPUT -p tcp --dport 40110:40210 -j ACCEPT', 'sudo iptables -I OUTPUT 1 -p tcp --dport 40110:40210 -j ACCEPT')
+
+            # Specific patch for install.sh to wait for apt lock and install unzip dependency
+            if os.path.basename(filepath) == 'install.sh':
+                target_apt = 'sudo apt update -qq && sudo apt install -y -qq wget curl'
+                replacement_apt = 'wait_for_apt_lock && sudo apt update -qq && sudo apt install -y -qq wget curl unzip'
+                content = content.replace(target_apt, replacement_apt)
+
+                target_top = '#!/bin/bash'
+                replacement_top = r'''#!/bin/bash
+
+# Function to wait for apt lock to be released
+wait_for_apt_lock() {
+    echo "Checking for apt package manager lock..."
+    local count=0
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+        if [ $count -eq 0 ]; then
+            echo "Waiting for other package manager process (like unattended-upgrades) to release the lock..."
+        fi
+        sleep 5
+        count=$((count + 1))
+        if [ $count -gt 60 ]; then
+            echo "Warning: Waiting for more than 5 minutes. Attempting to force release..."
+            break
+        fi
+    done
+}'''
+                content = content.replace(target_top, replacement_top)
+
+                target_top_sh = '#!/bin/sh'
+                replacement_top_sh = r'''#!/bin/sh
+
+# Function to wait for apt lock to be released
+wait_for_apt_lock() {
+    echo "Checking for apt package manager lock..."
+    local count=0
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+        if [ $count -eq 0 ]; then
+            echo "Waiting for other package manager process (like unattended-upgrades) to release the lock..."
+        fi
+        sleep 5
+        count=$((count + 1))
+        if [ $count -gt 60 ]; then
+            echo "Warning: Waiting for more than 5 minutes. Attempting to force release..."
+            break
+        fi
+    done
+}'''
+                content = content.replace(target_top_sh, replacement_top_sh)
             
         # 5. Patch install_cp_plugin to resolve relative paths
         if os.path.basename(filepath) == 'install_cp_plugin':
