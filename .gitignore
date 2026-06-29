@@ -13,3 +13,4 @@ __pycache__/
 # Plugin sub-repositories
 plugins/olspanel-plugin-git-deploy/
 plugins/olspanel-plugin-terminal/
+plugins/olspanel-plugin-pm2/
