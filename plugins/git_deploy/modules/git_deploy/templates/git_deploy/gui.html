@@ -15,12 +15,12 @@
                 Connect domains to GitHub repositories and automatically deploy on every push
             </p>
         </div>
-        <div style="display: flex; gap: 12px;">
-            <button onclick="openModal('githubTokenModal')" style="background: #fff; border: 1px solid #cbd5e1; color: #475569; padding: 10px 16px; border-radius: 4px; font-weight: 600; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; transition: all 0.2s;" onmouseover="this.style.background='#f8fafc';" onmouseout="this.style.background='#fff';">
-                {% if has_github_token %}GitHub Connected{% else %}Connect GitHub{% endif %}
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <button onclick="openModal('githubTokenModal')" class="btn btn-outline-secondary btn-sm" style="text-transform: none; display: inline-flex; align-items: center; gap: 6px;">
+                ⚙ {% if has_github_token %}GitHub Connected{% else %}Connect GitHub{% endif %}
             </button>
-            <button onclick="openModal('addConnectionModal')" style="background: linear-gradient(135deg, {{ branding.brand_color|default:'#ef6d19' }} 0%, #ea580c 100%); color: #fff; border: none; padding: 10px 16px; border-radius: 4px; font-weight: 600; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; box-shadow: 0 4px 12px rgba(239, 109, 25, 0.15); transition: all 0.2s;" onmouseover="this.style.transform='translateY(-1px)';" onmouseout="this.style.transform='none';">
-                Connect Repository
+            <button onclick="openModal('addConnectionModal')" class="btn btn-pill btn-success btn-sm" style="text-transform: none; display: inline-flex; align-items: center; gap: 6px;">
+                <span>+</span> Connect Repository
             </button>
         </div>
     </div>
@@ -32,10 +32,7 @@
     <div style="background: #fff; border-radius: 4px; border: 1.5px dashed #cbd5e1; padding: 50px 20px; text-align: center; color: #64748b;">
         <span style="font-size: 3rem; display: block; margin-bottom: 16px;">📂</span>
         <h6 style="margin: 0 0 8px; font-size: 1rem; font-weight: 600; color: #334155;">No connected repositories found</h6>
-        <p style="margin: 0 0 20px; font-size: 0.85rem; color: #94a3b8;">Link a domain or subdomain to start automatically publishing updates on git push.</p>
-        <button onclick="openModal('addConnectionModal')" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; padding: 10px 18px; border-radius: 4px; font-weight: 600; font-size: 0.82rem; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#e2e8f0';" onmouseout="this.style.background='#f1f5f9';">
-            Configure Git Deploy Now
-        </button>
+        <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">Link a domain or subdomain to start automatically publishing updates on git push.</p>
     </div>
     {% else %}
     <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
@@ -126,14 +123,14 @@
 
             <!-- Action buttons -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-                <button onclick="confirmDelete({{ dep.id }})" style="background: #fff; border: 1px solid #fee2e2; color: #ef4444; font-weight: 600; font-size: 0.8rem; padding: 8px 12px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#fef2f2';" onmouseout="this.style.background='#fff';">
+                <button onclick="confirmDelete({{ dep.id }})" class="btn btn-outline-danger btn-sm" style="text-transform: none;">
                     Delete Link
                 </button>
                 <div style="display: flex; gap: 8px;">
-                    <button onclick="openLogsModal({{ dep.id }})" style="background: #fff; border: 1px solid #cbd5e1; color: #475569; font-weight: 600; font-size: 0.8rem; padding: 8px 12px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f8fafc';" onmouseout="this.style.background='#fff';">
+                    <button onclick="openLogsModal({{ dep.id }})" class="btn btn-outline-secondary btn-sm" style="text-transform: none;">
                         View Logs
                     </button>
-                    <button onclick="triggerManualDeploy({{ dep.id }}, this)" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: #fff; border: none; font-weight: 600; font-size: 0.8rem; padding: 8px 14px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='scale(1.02)';" onmouseout="this.style.transform='none';">
+                    <button onclick="triggerManualDeploy({{ dep.id }}, this)" class="btn btn-primary btn-sm" style="text-transform: none;">
                         Deploy Now
                     </button>
                 </div>
@@ -155,6 +152,7 @@
 
             <form id="createDeploymentForm" style="padding: 24px; display: flex; flex-direction: column; gap: 20px;" onsubmit="submitCreateForm(event)">
                 {% csrf_token %}
+                <div id="createFormError" style="display: none; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 12px; font-size: 0.85rem; color: #b91c1c; line-height: 1.4; text-align: left;"></div>
                 
                 <!-- Domain selection -->
                 <div>
@@ -265,8 +263,8 @@
 
                 <!-- Footer buttons -->
                 <div style="border-top: 1px solid #f1f5f9; padding-top: 20px; display: flex; justify-content: flex-end; gap: 12px;">
-                    <button type="button" onclick="closeModal('addConnectionModal')" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; padding: 10px 18px; border-radius: 4px; font-weight: 600; font-size: 0.88rem; cursor: pointer;">Cancel</button>
-                    <button type="submit" style="background: linear-gradient(135deg, {{ branding.brand_color|default:'#ef6d19' }} 0%, #ea580c 100%); color: #fff; border: none; padding: 10px 20px; border-radius: 4px; font-weight: 600; font-size: 0.88rem; cursor: pointer; box-shadow: 0 4px 12px rgba(239, 109, 25, 0.2);">Connect Repo</button>
+                    <button type="button" onclick="closeModal('addConnectionModal')" class="btn btn-sm" style="text-transform: none; background: #ffffff; border: 1px solid #cbd5e1; color: #475569; padding: 6px 16px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f8fafc';" onmouseout="this.style.background='#ffffff';">Cancel</button>
+                    <button type="submit" id="btnConnectRepo" class="btn btn-danger btn-sm" style="text-transform: none;">Connect Repo</button>
                 </div>
             </form>
 
@@ -309,8 +307,8 @@
                         Your account is successfully linked. You can now select your repositories when connecting sites.
                     </p>
                     <div style="display: flex; justify-content: center; gap: 12px;">
-                        <button type="button" onclick="closeModal('githubTokenModal')" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; padding: 10px 18px; border-radius: 4px; font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#e2e8f0';" onmouseout="this.style.background='#f1f5f9';">Close</button>
-                        <button type="button" onclick="submitTokenForm('delete')" style="background: #fff; border: 1px solid #fee2e2; color: #ef4444; padding: 10px 18px; border-radius: 4px; font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#fef2f2';" onmouseout="this.style.background='#fff';">Disconnect</button>
+                        <button type="button" onclick="closeModal('githubTokenModal')" class="btn btn-sm" style="text-transform: none; background: #ffffff; border: 1px solid #cbd5e1; color: #475569; padding: 6px 16px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f8fafc';" onmouseout="this.style.background='#ffffff';">Close</button>
+                        <button type="button" onclick="submitTokenForm('delete')" class="btn btn-outline-danger btn-sm" style="text-transform: none;">Disconnect</button>
                     </div>
                 </div>
                 {% else %}
@@ -325,11 +323,11 @@
                     
                     {% if oauth_configured %}
                     <div style="display: flex; flex-direction: column; gap: 12px; align-items: center;">
-                        <a href="{% url 'git_deploy_oauth_redirect' %}" style="display: inline-flex; align-items: center; justify-content: center; gap: 10px; background: #24292f; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 4px; font-weight: 600; font-size: 0.9rem; text-align: center; box-shadow: 0 2px 8px rgba(36, 41, 47, 0.15); transition: all 0.2s; cursor: pointer;" onmouseover="this.style.background='#1f2327';" onmouseout="this.style.background='#24292f';">
-                            <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                        <a href="{% url 'git_deploy_oauth_redirect' %}" class="btn btn-pill btn-success btn-sm" style="text-transform: none; display: inline-flex; align-items: center; gap: 8px;">
+                            <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
                             Connect GitHub Account
                         </a>
-                        <button type="button" onclick="closeModal('githubTokenModal')" style="background: transparent; border: none; color: #64748b; padding: 6px 12px; font-weight: 500; font-size: 0.85rem; cursor: pointer; text-decoration: underline;">Cancel</button>
+                        <button type="button" onclick="closeModal('githubTokenModal')" class="btn btn-sm" style="text-transform: none; background: #ffffff; border: 1px solid #cbd5e1; color: #475569; padding: 6px 16px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#f8fafc';" onmouseout="this.style.background='#ffffff';">Cancel</button>
                     </div>
                     {% else %}
                     <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 14px; font-size: 0.82rem; color: #991b1b; text-align: left; line-height: 1.5;">
@@ -359,10 +357,10 @@
                         <span>✓</span> <span>System GitHub App is currently active and configured.</span>
                     </div>
                     
-                    <button type="button" onclick="disconnectGithubApp()" style="width: 100%; display: flex; align-items: center; justify-content: center; background: #fff; border: 1px solid #fee2e2; color: #ef4444; padding: 12px; border-radius: 4px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#fef2f2';" onmouseout="this.style.background='#fff';">
+                    <button type="button" onclick="disconnectGithubApp()" class="btn btn-outline-danger btn-sm" style="text-transform: none; width: 100%; display: flex; align-items: center; justify-content: center;">
                         Disconnect GitHub App
                     </button>
-
+ 
                     <div style="font-size: 0.78rem; color: #64748b; line-height: 1.5; text-align: left; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px;">
                         <strong style="color: #475569;">💡 How to delete the App on GitHub:</strong><br>
                         Since this app is registered under your developer settings on GitHub, disconnecting it locally does not automatically delete it from GitHub. To delete it fully:
@@ -378,7 +376,7 @@
                 <!-- Frictionless Setup Form -->
                 <form action="https://github.com/settings/apps/new" method="post" style="margin: 0; width: 100%;">
                     <input type="hidden" name="manifest" id="githubManifestPayload">
-                    <button type="submit" onclick="generateGithubManifest(event, this)" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; border: none; padding: 12px; border-radius: 4px; font-weight: 600; font-size: 0.9rem; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15); transition: all 0.2s;" onmouseover="this.style.transform='translateY(-1px)';" onmouseout="this.style.transform='none';">
+                    <button type="submit" onclick="generateGithubManifest(event, this)" class="btn btn-pill btn-success btn-sm" style="text-transform: none; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
                         Setup GitHub App Automatically
                     </button>
                 </form>
@@ -594,9 +592,50 @@ function copyToClipboard(id) {
     }, 2000);
 }
 
+function showCreateFormError(message) {
+    const errorBanner = document.getElementById('createFormError');
+    errorBanner.textContent = message;
+    errorBanner.style.display = 'block';
+    errorBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 function submitCreateForm(event) {
     event.preventDefault();
     const form = document.getElementById('createDeploymentForm');
+    
+    // Clear previous errors
+    document.getElementById('createFormError').style.display = 'none';
+    
+    // Client-side validations
+    const domainId = document.getElementById('hiddenDomainSelect').value;
+    if (!domainId) {
+        showCreateFormError("Please select a target domain or subdomain.");
+        return;
+    }
+    
+    const repoUrl = document.getElementById('repoUrlInput').value.trim();
+    if (!repoUrl) {
+        const githubSelect = document.getElementById('githubSelectRepoContainer');
+        if (githubSelect && githubSelect.style.display !== 'none') {
+            showCreateFormError("Please select a GitHub repository from the dropdown list.");
+        } else {
+            showCreateFormError("Please enter a target Git repository URL.");
+        }
+        return;
+    }
+    
+    const branch = form.querySelector('input[name="branch"]').value.trim();
+    if (!branch) {
+        showCreateFormError("Please enter a target deploy branch (e.g. main).");
+        return;
+    }
+    
+    // Button loading state & lock
+    const submitBtn = document.getElementById('btnConnectRepo');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<img src="/media/loading.gif" style="width: 16px; height: 16px; margin-right: 6px; vertical-align: middle; display: inline-block;" /> Connecting...';
+    
     const formData = new FormData(form);
     
     fetch("{% url 'git_deploy_create' %}", {
@@ -608,11 +647,15 @@ function submitCreateForm(event) {
         if(data.status === "success") {
             location.reload();
         } else {
-            alert("Error: " + data.message);
+            showCreateFormError(data.message);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
         }
     })
     .catch(err => {
-        alert("Server error connecting repository.");
+        showCreateFormError("Server error connecting repository. Please try again.");
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
     });
 }
 
