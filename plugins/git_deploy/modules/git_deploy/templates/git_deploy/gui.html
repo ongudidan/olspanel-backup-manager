@@ -1222,7 +1222,7 @@ function generateGithubManifest(event, button) {
             protocol + "//" + host + "/module/git_deploy/oauth/callback/"
         ],
         setup_url: protocol + "//" + host + "/module/git_deploy/gui/",
-        public: false,
+        public: true,
         default_permissions: {
             metadata: "read",
             contents: "write",
