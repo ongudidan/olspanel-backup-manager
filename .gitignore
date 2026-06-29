@@ -9,3 +9,7 @@ olspanel_backup_v*/
 .vscode/
 .idea/
 __pycache__/
+
+# Plugin sub-repositories
+plugins/olspanel-plugin-git-deploy/
+plugins/olspanel-plugin-terminal/
