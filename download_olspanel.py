@@ -62,9 +62,6 @@ OLSPANEL_STATIC_FILES = [
     ("https://olspanel.com/plugin/phpmyadmin.zip", "plugin/phpmyadmin.zip"),
     ("https://olspanel.com/plugin/ufw.zip", "plugin/ufw.zip"),
     ("https://olspanel.com/plugin/config_ufw.zip", "plugin/config_ufw.zip"),
-    ("https://olspanel.com/plugin/terminal.zip", "plugin/terminal.zip"),
-    ("https://olspanel.com/plugin/terminal_module.zip", "plugin/terminal_module.zip"),
-    ("https://olspanel.com/plugin/git_deploy.zip", "plugin/git_deploy.zip"),
     
     # CentOS Repository configurations
     ("https://olspanel.com/repo-files/centos-auth-43.repo", "repo-files/centos-auth-43.repo"),
@@ -452,24 +449,7 @@ fi
 setup_cp_service_with_port'''
                 content = content.replace(target_call, replacement_call)
 
-                # Inject custom plugin installations right before display_success_message
-                target_msg = 'display_success_message'
-                replacement_msg = r'''# Automatically install custom plugins from local server if running
-if [ -f "/usr/local/bin/install_cp_plugin" ]; then
-    if wget --spider "http://127.0.0.1:8000/plugin/git_deploy.zip" >/dev/null 2>&1; then
-        echo "Installing Git Deploy Plugin..."
-        wget -O /tmp/git_deploy.zip "http://127.0.0.1:8000/plugin/git_deploy.zip" && /usr/local/bin/install_cp_plugin /tmp/git_deploy.zip
-        rm -f /tmp/git_deploy.zip
-    fi
-    if wget --spider "http://127.0.0.1:8000/plugin/terminal.zip" >/dev/null 2>&1; then
-        echo "Installing Terminal Plugin..."
-        wget -O /tmp/terminal.zip "http://127.0.0.1:8000/plugin/terminal.zip" && /usr/local/bin/install_cp_plugin /tmp/terminal.zip
-        rm -f /tmp/terminal.zip
-    fi
-fi
 
-display_success_message'''
-                content = content.replace(target_msg, replacement_msg)
 
                 # Replace iptables -A with iptables -I 1 to prevent Oracle Cloud / GCP lockups before reboot
                 content = content.replace('sudo iptables -A INPUT -p tcp --dport "$port" -j ACCEPT', 'sudo iptables -I INPUT 1 -p tcp --dport "$port" -j ACCEPT')
@@ -630,30 +610,7 @@ def main():
         local_file_path = os.path.join(dest_path, relative_path)
         print(f"({idx}/{len(OLSPANEL_STATIC_FILES)}) {relative_path}")
         
-        # Check if we have a local version of this file in plugins/ to copy instead of downloading
-        local_override_path = None
-        if relative_path == "plugin/terminal.zip":
-            local_override_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugins", "terminal.zip")
-        elif relative_path == "plugin/terminal_module.zip":
-            local_override_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugins", "terminal_module.zip")
-        elif relative_path == "plugin/git_deploy.zip":
-            local_override_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "plugins", "git_deploy.zip")
 
-        if local_override_path and os.path.exists(local_override_path):
-            print(f"  ✓ Found local override for {relative_path}. Copying from local plugins...")
-            if args.dry_run:
-                print(f"  [Dry-run] Would copy local {local_override_path} to {local_file_path}")
-                static_success += 1
-                continue
-            
-            dir_name = os.path.dirname(local_file_path)
-            if dir_name:
-                os.makedirs(dir_name, exist_ok=True)
-            import shutil
-            shutil.copy2(local_override_path, local_file_path)
-            static_success += 1
-            print("  ✓ Copied successfully.")
-            continue
 
         if args.dry_run:
             print(f"  [Dry-run] Would download from {url}")
