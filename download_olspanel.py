@@ -562,6 +562,63 @@ def get_latest_version_from_site():
         print(f"  [Scraper Error] Could not fetch version from homepage: {e}")
     return None
 
+def patch_panel_setup_zip(dest_path):
+    zip_path = os.path.join(dest_path, "panel_setup.zip")
+    if not os.path.exists(zip_path):
+        print(f"  ⚠️ Warning: panel_setup.zip not found at {zip_path}, skipping patch.")
+        return False
+    
+    print("  📦 Patching mypanel/users/views.py inside panel_setup.zip...")
+    import zipfile
+    temp_zip_path = zip_path + ".tmp"
+    
+    target_file = "mypanel/users/views.py"
+    target_str = """            if request.admin_user:
+                user_data = get_user_data_by_id(request.admin_user.id)
+                whm = user_data.get('whm')
+            else:
+                whm = 0"""
+                
+    replacement_str = """            if request.user:
+                user_data = get_user_data_by_id(request.user.id)
+                whm = user_data.get('whm', 0)
+            elif request.admin_user:
+                user_data = get_user_data_by_id(request.admin_user.id)
+                whm = user_data.get('whm', 0)
+            else:
+                whm = 0"""
+
+    patched = False
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as yin:
+            with zipfile.ZipFile(temp_zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as yout:
+                for item in yin.infolist():
+                    data = yin.read(item.filename)
+                    if item.filename == target_file:
+                        content_str = data.decode('utf-8')
+                        if target_str in content_str:
+                            content_str = content_str.replace(target_str, replacement_str)
+                            print("    ✓ Successfully patched WHM user panel plugin access bug in views.py inside zip.")
+                            patched = True
+                        else:
+                            print("    ⚠️ Warning: WHM access target check not found or already patched in views.py.")
+                        data = content_str.encode('utf-8')
+                    yout.writestr(item, data)
+        if patched:
+            os.replace(temp_zip_path, zip_path)
+            return True
+        else:
+            if os.path.exists(temp_zip_path):
+                os.remove(temp_zip_path)
+    except Exception as e:
+        print(f"    [Error] Failed to patch views.py inside zip: {e}")
+        if os.path.exists(temp_zip_path):
+            try:
+                os.remove(temp_zip_path)
+            except Exception:
+                pass
+    return False
+
 # ==============================================================================
 # MAIN ROUTINE
 # ==============================================================================
@@ -635,6 +692,9 @@ def main():
         print(f"✓ Patched {len(patched)} script files to redirect installer downloads.")
         for pf in patched:
             print(f"  - {pf}")
+        
+        # Patch views.py inside panel_setup.zip to resolve user panel plugin authentication bugs
+        patch_panel_setup_zip(dest_path)
             
         # Write offline installer instructions guide
         readme_content = f"""# Offline OLSPanel Installation Guide
