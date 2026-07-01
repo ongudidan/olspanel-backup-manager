@@ -568,18 +568,18 @@ def patch_panel_setup_zip(dest_path):
         print(f"  ⚠️ Warning: panel_setup.zip not found at {zip_path}, skipping patch.")
         return False
     
-    print("  📦 Patching mypanel/users/views.py inside panel_setup.zip...")
+    print("  📦 Patching panel_setup.zip (views.py and php.py)...")
     import zipfile
     temp_zip_path = zip_path + ".tmp"
     
-    target_file = "mypanel/users/views.py"
-    target_str = """            if request.admin_user:
+    target_views = "mypanel/users/views.py"
+    target_views_str = """            if request.admin_user:
                 user_data = get_user_data_by_id(request.admin_user.id)
                 whm = user_data.get('whm')
             else:
                 whm = 0"""
                 
-    replacement_str = """            if request.user:
+    replacement_views_str = """            if request.user:
                 user_data = get_user_data_by_id(request.user.id)
                 whm = user_data.get('whm', 0)
             elif request.admin_user:
@@ -588,20 +588,49 @@ def patch_panel_setup_zip(dest_path):
             else:
                 whm = 0"""
 
+    target_php = "mypanel/users/php.py"
+    target_php_str = """    if request.admin_user:
+        user_data = get_user_data_by_id(request.admin_user.id)
+        whm = user_data.get('whm')
+    else:
+        whm = 0"""
+
+    replacement_php_str = """    if request.user:
+        user_data = get_user_data_by_id(request.user.id)
+        whm = user_data.get('whm', 0)
+    elif request.admin_user:
+        user_data = get_user_data_by_id(request.admin_user.id)
+        whm = user_data.get('whm', 0)
+    else:
+        whm = 0"""
+
     patched = False
     try:
         with zipfile.ZipFile(zip_path, 'r') as yin:
             with zipfile.ZipFile(temp_zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as yout:
                 for item in yin.infolist():
                     data = yin.read(item.filename)
-                    if item.filename == target_file:
+                    if item.filename == target_views:
                         content_str = data.decode('utf-8')
-                        if target_str in content_str:
-                            content_str = content_str.replace(target_str, replacement_str)
+                        has_crlf = '\r\n' in content_str
+                        content_str = content_str.replace('\r\n', '\n')
+                        if target_views_str in content_str:
+                            content_str = content_str.replace(target_views_str, replacement_views_str)
                             print("    ✓ Successfully patched WHM user panel plugin access bug in views.py inside zip.")
                             patched = True
-                        else:
-                            print("    ⚠️ Warning: WHM access target check not found or already patched in views.py.")
+                        if has_crlf:
+                            content_str = content_str.replace('\n', '\r\n')
+                        data = content_str.encode('utf-8')
+                    elif item.filename == target_php:
+                        content_str = data.decode('utf-8')
+                        has_crlf = '\r\n' in content_str
+                        content_str = content_str.replace('\r\n', '\n')
+                        if target_php_str in content_str:
+                            content_str = content_str.replace(target_php_str, replacement_php_str)
+                            print("    ✓ Successfully patched WHM user panel CGI username bug in php.py inside zip.")
+                            patched = True
+                        if has_crlf:
+                            content_str = content_str.replace('\n', '\r\n')
                         data = content_str.encode('utf-8')
                     yout.writestr(item, data)
         if patched:
@@ -611,7 +640,7 @@ def patch_panel_setup_zip(dest_path):
             if os.path.exists(temp_zip_path):
                 os.remove(temp_zip_path)
     except Exception as e:
-        print(f"    [Error] Failed to patch views.py inside zip: {e}")
+        print(f"    [Error] Failed to patch panel_setup.zip: {e}")
         if os.path.exists(temp_zip_path):
             try:
                 os.remove(temp_zip_path)
